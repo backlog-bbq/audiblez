@@ -105,6 +105,44 @@ podman info | grep -A2 'cdi'
 `AddDevice=nvidia.com/gpu=all` in `audiblez-cuda.container` then exposes the GPU
 to the container without `--privileged`.
 
+### SELinux + GPU on Fedora / Silverblue / RHEL
+
+On SELinux-enforcing hosts you may see the service start cleanly but
+`nvidia-smi` (and therefore PyTorch CUDA init) fail inside the container with
+`Failed to initialize NVML: Insufficient Permissions`. SELinux is blocking
+access to `/dev/nvidiactl`, which is labeled `xserver_misc_device_t`.
+
+Confirm with:
+
+```sh
+sudo ausearch -m avc -ts recent | grep nvidia
+# Look for: scontext=...container_t... tcontext=...xserver_misc_device_t...
+```
+
+Fix by flipping the matching boolean (persists across reboots with `-P`):
+
+```sh
+sudo setsebool -P container_use_xserver_devices on
+systemctl --user restart audiblez-cuda.service
+```
+
+`container_use_xserver_devices` is the targeted boolean for GPU/X devices in
+modern container-selinux. It keeps the rest of SELinux enforcing on the
+container — strongly preferred over the per-container nuke
+`SecurityLabelDisable=true`.
+
+The `nvidia-container-toolkit-selinux` package sets this same boolean as
+part of its install, so layering it on Silverblue is the declarative
+alternative:
+
+```sh
+rpm-ostree install nvidia-container-toolkit-selinux
+# reboot
+```
+
+If new denials appear on a different label after that, repeat the
+`ausearch` → `setsebool` loop with whatever boolean matches.
+
 ## Outputs
 
 Generated audiobooks live in the `audiblez-outputs` named volume (declared by
