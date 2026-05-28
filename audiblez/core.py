@@ -70,7 +70,8 @@ def set_espeak_library():
 
 
 def main(file_path, voice, pick_manually, speed, output_folder='.',
-         max_chapters=None, max_sentences=None, selected_chapters=None, post_event=None):
+         max_chapters=None, max_sentences=None, selected_chapters=None, post_event=None,
+         keep_intermediates=False):
     if post_event: post_event('CORE_STARTED')
     if output_folder != '.':
         Path(output_folder).mkdir(parents=True, exist_ok=True)
@@ -107,17 +108,23 @@ def main(file_path, voice, pick_manually, speed, output_folder='.',
         post_event=post_event,
         max_chapters=max_chapters,
         max_sentences=max_sentences,
+        keep_intermediates=keep_intermediates,
     )
 
 
 def synthesize(file_path, selected_chapters, voice, speed, output_folder='.',
                title='', creator='', cover_image=b'',
-               post_event=None, max_chapters=None, max_sentences=None):
+               post_event=None, max_chapters=None, max_sentences=None,
+               keep_intermediates=False):
     """Run TTS over an already-prepared list of chapters and assemble the M4B.
 
     Takes chapter objects whose `extracted_text` and `chapter_index` are already
     populated (and possibly edited by the caller). The CLI uses this via `main()`;
     the web UI calls it directly so user edits to chapter text survive.
+
+    When `keep_intermediates=False` (default), per-chapter WAVs and
+    `chapters.txt` are deleted after the M4B is built successfully. Pass
+    `True` to keep them — useful when you want to inspect or re-mux.
     """
     load_spacy()
     if output_folder != '.':
@@ -185,7 +192,20 @@ def synthesize(file_path, selected_chapters, voice, speed, output_folder='.',
 
         if has_ffmpeg:
             create_index_file(title, creator, chapter_wav_files, output_folder)
+            final_m4b = Path(output_folder) / filename.replace(extension, '.m4b')
             create_m4b(chapter_wav_files, filename, cover_image, output_folder)
+            if final_m4b.exists() and not keep_intermediates:
+                # M4B built successfully — sweep the per-chapter WAVs and the
+                # chapters.txt metadata so the output folder is just the M4B.
+                for wav in chapter_wav_files:
+                    try:
+                        Path(wav).unlink(missing_ok=True)
+                    except Exception as e:
+                        print(f'Failed to delete {wav}: {e}')
+                try:
+                    (Path(output_folder) / 'chapters.txt').unlink(missing_ok=True)
+                except Exception:
+                    pass
             if post_event: post_event('CORE_FINISHED')
     except Exception as e:
         traceback.print_exc()
@@ -230,6 +250,10 @@ def gen_audio_segments(pipeline, text, voice, speed, stats=None, max_sentences=N
     audio_segments = []
     doc = nlp(text)
     sentences = list(doc.sents)
+    # Throttle progress emissions to one per integer percentage point: the
+    # underlying loop fires per-sentence, which can be hundreds of events per
+    # chapter and floods both journald and any SSE consumer.
+    last_progress_emitted = getattr(stats, "progress", -1) if stats else -1
     for i, sent in enumerate(sentences):
         if max_sentences and i > max_sentences: break
         for gs, ps, audio in pipeline(sent.text, voice=voice, speed=speed, split_pattern=r'\n\n\n'):
@@ -238,9 +262,10 @@ def gen_audio_segments(pipeline, text, voice, speed, stats=None, max_sentences=N
             stats.processed_chars += len(sent.text)
             stats.progress = stats.processed_chars * 100 // stats.total_chars
             stats.eta = strfdelta((stats.total_chars - stats.processed_chars) / stats.chars_per_sec)
-            if post_event: post_event('CORE_PROGRESS', stats=stats)
-            print(f'Estimated time remaining: {stats.eta}')
-            print('Progress:', f'{stats.progress}%\n')
+            if stats.progress != last_progress_emitted:
+                if post_event: post_event('CORE_PROGRESS', stats=stats)
+                print(f'Progress: {stats.progress}%  ETA: {stats.eta}')
+                last_progress_emitted = stats.progress
     return audio_segments
 
 

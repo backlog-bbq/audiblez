@@ -234,17 +234,54 @@ function renderChapters() {
 
     const preview = document.createElement("div");
     preview.className = "chapter__preview";
+    const snippetView = document.createElement("div");
+    snippetView.className = "chap-snippet";
+    snippetView.textContent = "Loading…";
+
+    const editToggle = document.createElement("button");
+    editToggle.type = "button"; editToggle.className = "linkbtn chap-edit-toggle";
+    editToggle.textContent = "Edit full text";
+
     const ta = document.createElement("textarea");
     ta.className = "chap-text"; ta.spellcheck = false; ta.dataset.index = c.index;
-    ta.placeholder = "Loading…";
+    ta.placeholder = "Loading…"; ta.hidden = true;
     ta.addEventListener("input", () => { state.edits[c.index] = ta.value; });
-    preview.appendChild(ta);
 
+    editToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const editing = ta.hidden;
+      ta.hidden = !editing;
+      snippetView.hidden = editing;
+      editToggle.textContent = editing ? "Show snippet" : "Edit full text";
+      if (editing) ta.focus();
+    });
+
+    preview.append(snippetView, editToggle, ta);
     li.append(row, preview);
 
-    row.addEventListener("click", () => toggleChapter(li, c.index));
+    // Row click = toggle the checkbox. Only the chevron expands.
+    row.addEventListener("click", (e) => {
+      if (e.target.closest(".chap-toggle")) return;
+      if (e.target.matches('input[type=checkbox]')) return;
+      cb.checked = !cb.checked;
+      c.auto_selected = cb.checked;
+      updateStats();
+    });
+    toggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleChapter(li, c.index);
+    });
+
     list.appendChild(li);
   }
+}
+
+function snippetOf(text, headSentences = 3, tailSentences = 3) {
+  const sents = String(text).split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter(Boolean);
+  if (sents.length <= headSentences + tailSentences) return sents.join(" ");
+  return sents.slice(0, headSentences).join(" ") +
+         "\n\n…\n\n" +
+         sents.slice(-tailSentences).join(" ");
 }
 
 async function toggleChapter(li, idx) {
@@ -256,17 +293,18 @@ async function toggleChapter(li, idx) {
   li.classList.toggle("is-open", willOpen);
   if (!willOpen) return;
   if (state.textLoaded.has(idx)) return;
+  const snippet = li.querySelector(".chap-snippet");
   const ta = li.querySelector(".chap-text");
-  ta.value = "Loading…";
+  snippet.textContent = "Loading…";
   try {
     const data = await fetch(`/api/jobs/${state.job.job_id}/chapter/${idx}`).then((r) => r.json());
     const text = (state.edits[idx] !== undefined) ? state.edits[idx] : data.text;
-    ta.value = text;
-    state.edits[idx] = ta.value;
+    state.edits[idx] = text;
     state.textLoaded.add(idx);
-    ta.focus();
+    snippet.textContent = snippetOf(text);
+    ta.value = text;
   } catch (e) {
-    ta.value = `Failed to load chapter: ${e.message || e}`;
+    snippet.textContent = `Failed to load chapter: ${e.message || e}`;
   }
 }
 
@@ -364,6 +402,7 @@ async function onStart() {
   const voice = $("voice-select").value;
   const speed = Number($("speed-input").value);
   const cuda = document.querySelector('input[name="engine"]:checked').value === "cuda";
+  const keep_intermediates = $("keep-intermediates").checked;
 
   beginRunUI("queued");
 
@@ -381,6 +420,7 @@ async function onStart() {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         voice, speed, cuda,
+        keep_intermediates,
         selected_chapter_indexes: selected,
         edited_texts: state.edits,
       }),
@@ -432,7 +472,9 @@ function openEventStream() {
 }
 
 function handleEvent(evt) {
-  pushLog(eventToLogLine(evt));
+  // The progress bar already shows the per-percent update; the log box
+  // would just be a wall of "progress N%" lines, so skip those here.
+  if (evt.event !== "CORE_PROGRESS") pushLog(eventToLogLine(evt));
   switch (evt.event) {
     case "CORE_STARTED":
       $("progress-label").textContent = "running";

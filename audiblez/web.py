@@ -159,6 +159,7 @@ def _process_queue_item(item) -> None:
             creator=job.creator,
             cover_image=job.cover_bytes,
             post_event=post_event,
+            keep_intermediates=bool(params.get("keep_intermediates", False)),
         )
         if job.status == "running":
             post_event("CORE_ERROR", message="Synthesis finished without producing an M4B.")
@@ -582,6 +583,7 @@ async def start_synthesis(job_id: str, payload: dict):
     voice = payload.get("voice")
     speed = float(payload.get("speed", 1.0))
     use_cuda = bool(payload.get("cuda", False))
+    keep_intermediates = bool(payload.get("keep_intermediates", False))
     selected_indexes = set(int(i) for i in payload.get("selected_chapter_indexes", []))
     edited_texts = payload.get("edited_texts", {}) or {}
 
@@ -613,6 +615,7 @@ async def start_synthesis(job_id: str, payload: dict):
         "voice": voice,
         "speed": speed,
         "cuda": use_cuda,
+        "keep_intermediates": keep_intermediates,
         "selected_chapter_indexes": sorted(selected_indexes),
         "edited_texts": edited_texts,
     }

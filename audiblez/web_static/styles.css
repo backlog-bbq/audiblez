@@ -536,11 +536,25 @@ dialog .panel__heading { padding-bottom: 12px; }
 
 .chapter__preview {
   display: none;
-  padding: 0 12px 14px 36px;
+  padding: 12px 12px 14px 36px;
   border-top: 1px solid var(--rule-soft);
   background: rgba(255,255,255,0.4);
 }
 .chapter.is-open .chapter__preview { display: block; }
+.chap-snippet {
+  white-space: pre-wrap;
+  font-family: var(--font-display); font-style: italic;
+  font-size: 13.5px; line-height: 1.5;
+  color: var(--ink-soft);
+  border-left: 2px solid var(--accent);
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.55);
+}
+.chap-edit-toggle {
+  margin-top: 8px;
+  font-family: var(--font-mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
 .chap-text {
   width: 100%; min-height: 200px;
   margin-top: 10px;
@@ -552,6 +566,19 @@ dialog .panel__heading { padding-bottom: 12px; }
   resize: vertical;
 }
 .chap-text:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.checkfield {
+  display: flex; gap: 8px; align-items: center;
+  margin-top: 8px;
+  font-size: 12.5px; color: var(--ink-soft);
+  cursor: pointer;
+}
+.checkfield input[type=checkbox] { accent-color: var(--accent); }
+.checkfield code {
+  font-family: var(--font-mono); font-size: 11px;
+  background: var(--paper); border: 1px solid var(--rule);
+  padding: 0 4px; border-radius: var(--radius);
+}
 
 /* ------------ Voice row ------------ */
 .voice-row { display: flex; gap: 8px; align-items: stretch; }
