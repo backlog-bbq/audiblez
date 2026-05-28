@@ -4,109 +4,161 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Audiblez</title>
+
+  <link rel="stylesheet" href="/static/fonts.css">
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <header>
-    <div class="brand">📚 Audiblez</div>
-    <label class="btn" for="epub-input">📁 Open EPUB</label>
-    <input id="epub-input" type="file" accept=".epub" hidden />
-    <button class="btn" id="about-btn">ℹ️ About</button>
-    <span id="system-info" class="muted"></span>
-    <span id="upload-status" class="muted"></span>
-  </header>
-
-  <main class="grid" id="empty-state">
-    <div class="placeholder">
-      <h2>Open an EPUB to begin.</h2>
-      <p>Generated audiobooks are saved on the server and can be downloaded from this page when synthesis finishes.</p>
-      <section id="recent-jobs" class="card" hidden>
-        <h3>Recent jobs</h3>
-        <ul id="recent-jobs-list"></ul>
-      </section>
-    </div>
-  </main>
-
-  <main class="grid hidden" id="book-view">
-    <aside id="chapters-panel" class="panel">
-      <h3>Chapters</h3>
-      <p class="muted">Select chapters to include in the audiobook.</p>
-      <table id="chapters-table">
-        <thead>
-          <tr><th></th><th>Name</th><th>Length</th><th>Status</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </aside>
-
-    <section id="editor-panel" class="panel">
-      <div class="editor-header">
-        <h3 id="chapter-label">Edit / Preview content</h3>
-        <button class="btn" id="preview-btn">🔊 Preview</button>
+  <div class="page">
+    <header class="masthead">
+      <div class="masthead__title">
+        <div class="brand-mark">A</div>
+        <div>
+          <h1>Audiblez</h1>
+          <p class="masthead__tagline">EPUB to audiobook, voiced.</p>
+        </div>
       </div>
-      <textarea id="chapter-text" spellcheck="false" placeholder="Select a chapter on the left."></textarea>
-      <audio id="preview-audio" controls hidden></audio>
-    </section>
-
-    <aside id="sidebar" class="panel">
-      <section class="card">
-        <h3>Book Details</h3>
-        <div class="book-info">
-          <img id="cover-img" alt="cover" hidden />
-          <dl id="book-meta"></dl>
+      <div class="masthead__actions">
+        <label class="btn btn--ghost" for="epub-input">Open EPUB</label>
+        <input id="epub-input" type="file" accept=".epub" hidden />
+        <button class="btn btn--ghost" id="about-btn">About</button>
+        <div class="masthead__meta">
+          <span class="dot" id="status-dot"></span>
+          <span id="system-info">checking…</span>
+          <span id="upload-status"></span>
         </div>
-      </section>
+      </div>
+    </header>
 
-      <section class="card">
-        <h3>Audiobook Parameters</h3>
-        <div class="form-row">
-          <label>Engine</label>
-          <div>
-            <label><input type="radio" name="engine" value="cpu" checked> CPU</label>
-            <label><input type="radio" name="engine" value="cuda" id="engine-cuda"> CUDA</label>
+    <main class="layout" id="empty-state">
+      <section class="panel panel--full">
+        <div class="panel__heading">
+          <h2>Begin</h2>
+          <span class="panel__hint">Get started</span>
+        </div>
+        <p class="lede">
+          Open an EPUB to extract its chapters, choose a voice, and synthesize.
+          Generated audiobooks are stored on the server and can be downloaded
+          when synthesis finishes.
+        </p>
+        <section id="recent-jobs" class="recent" hidden>
+          <div class="panel__heading">
+            <h3 class="recent__title">Recent jobs</h3>
+            <span class="panel__hint">Click to resume</span>
           </div>
+          <ul id="recent-jobs-list"></ul>
+        </section>
+      </section>
+    </main>
+
+    <main class="layout hidden" id="book-view">
+      <aside id="chapters-panel" class="panel">
+        <div class="panel__heading">
+          <h2>Chapters</h2>
+          <span class="panel__hint">Select to include</span>
         </div>
-        <div class="form-row">
-          <label for="voice-select">Voice</label>
-          <select id="voice-select"></select>
+        <table id="chapters-table">
+          <thead>
+            <tr><th></th><th>Name</th><th>Length</th><th>Status</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </aside>
+
+      <section id="editor-panel" class="panel">
+        <div class="panel__heading">
+          <h2 id="chapter-label">Editor</h2>
+          <button class="btn btn--ghost btn--small" id="preview-btn">Preview</button>
         </div>
-        <div class="form-row">
-          <label for="speed-input">Speed</label>
-          <input id="speed-input" type="number" min="0.5" max="2.0" step="0.05" value="1.0" />
-        </div>
-        <div class="form-row">
-          <label>Output Folder</label>
-          <code id="output-folder" class="muted"></code>
-        </div>
+        <textarea id="chapter-text" spellcheck="false" placeholder="Select a chapter on the left."></textarea>
+        <audio id="preview-audio" controls hidden></audio>
       </section>
 
-      <section class="card">
-        <h3>Audiobook Generation Status</h3>
-        <button class="btn primary" id="start-btn">🚀 Start Audiobook Synthesis</button>
-        <div class="progress-wrap hidden" id="progress-wrap">
-          <label id="progress-label">Synthesis Progress: 0%</label>
-          <progress id="progress-bar" max="100" value="0"></progress>
-          <p id="eta-label" class="muted">Estimated Time Remaining: —</p>
-        </div>
-        <div id="error-message" class="error hidden">
-          <span id="error-text"></span>
-          <button class="btn" id="resume-btn" hidden>↻ Resume</button>
-        </div>
-      </section>
+      <aside id="sidebar">
+        <section class="panel">
+          <div class="panel__heading">
+            <h2>Book</h2>
+            <span class="panel__hint">Details</span>
+          </div>
+          <div class="book-info">
+            <img id="cover-img" alt="cover" hidden />
+            <dl id="book-meta"></dl>
+          </div>
+        </section>
 
-      <section class="card" id="files-card" hidden>
-        <h3>Output Files</h3>
-        <ul id="files-list"></ul>
-      </section>
-    </aside>
-  </main>
+        <section class="panel">
+          <div class="panel__heading">
+            <h2>Parameters</h2>
+            <span class="panel__hint">Voice &amp; engine</span>
+          </div>
+
+          <div class="field">
+            <label>Engine</label>
+            <div class="segmented">
+              <label><input type="radio" name="engine" value="cpu" checked> CPU</label>
+              <label><input type="radio" name="engine" value="cuda" id="engine-cuda"> CUDA</label>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="voice-select">Voice</label>
+            <select id="voice-select"></select>
+          </div>
+
+          <div class="field">
+            <label for="speed-input">Speed <span class="field__value" id="speed-value">1.0×</span></label>
+            <input id="speed-input" type="range" min="0.5" max="2.0" step="0.05" value="1.0" />
+          </div>
+
+          <div class="field">
+            <label>Output folder</label>
+            <code id="output-folder" class="mono-line"></code>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel__heading">
+            <h2>Synthesis</h2>
+            <span class="panel__hint">Generation status</span>
+          </div>
+          <button class="btn btn--primary" id="start-btn">Start Synthesis</button>
+
+          <div class="progress-wrap hidden" id="progress-wrap">
+            <div class="progress-meta">
+              <span class="panel__hint" id="progress-label">Progress 0%</span>
+              <span class="panel__hint" id="eta-label">ETA —</span>
+            </div>
+            <progress id="progress-bar" max="100" value="0"></progress>
+          </div>
+
+          <div id="error-message" class="preview-sample is-error hidden">
+            <span id="error-text"></span>
+            <button class="btn btn--primary btn--small" id="resume-btn" hidden>Resume</button>
+          </div>
+        </section>
+
+        <section class="panel" id="files-card" hidden>
+          <div class="panel__heading">
+            <h2>Output</h2>
+            <span class="panel__hint">Downloadable</span>
+          </div>
+          <ul id="files-list"></ul>
+        </section>
+      </aside>
+    </main>
+  </div>
 
   <dialog id="about-dialog">
-    <h2>Audiblez</h2>
-    <p>Generate audiobooks from EPUB files using Kokoro-82M.</p>
-    <p>MIT Licensed. Original by Claudio Santini and contributors.<br>
-       Web UI matches the desktop wxPython interface.</p>
-    <form method="dialog"><button class="btn">Close</button></form>
+    <div class="panel__heading">
+      <h2>About</h2>
+      <span class="panel__hint">Audiblez</span>
+    </div>
+    <p class="lede">Generate audiobooks from EPUB files using Kokoro-82M.</p>
+    <p class="muted">MIT Licensed. Original by Claudio Santini and contributors.
+       Web UI mirrors the desktop wxPython interface.</p>
+    <form method="dialog" class="dialog-actions">
+      <button class="btn btn--ghost">Close</button>
+    </form>
   </dialog>
 
   <script src="/static/app.js"></script>

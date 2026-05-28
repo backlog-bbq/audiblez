@@ -17,8 +17,13 @@ async function init() {
   const sys = await fetch("/api/system").then((r) => r.json());
   state.cudaAvailable = sys.cuda_available;
   $("system-info").textContent =
-    `CUDA: ${sys.cuda_available ? "available" : "unavailable"} · ` +
-    `ffmpeg: ${sys.ffmpeg_available ? "ok" : "missing"}`;
+    `CUDA ${sys.cuda_available ? "ON" : "OFF"} · FFMPEG ${sys.ffmpeg_available ? "OK" : "MISSING"}`;
+  const dot = $("status-dot");
+  if (dot) {
+    if (!sys.ffmpeg_available) dot.className = "dot is-bad";
+    else if (!sys.cuda_available) dot.className = "dot is-warn";
+    else dot.className = "dot";
+  }
   if (sys.cuda_available) {
     $("engine-cuda").checked = true;
   } else {
@@ -42,6 +47,11 @@ async function init() {
   $("start-btn").addEventListener("click", onStart);
   $("chapter-text").addEventListener("input", onTextEdit);
   $("resume-btn").addEventListener("click", onResume);
+  const speedInput = $("speed-input");
+  const speedValue = $("speed-value");
+  const renderSpeed = () => { speedValue.textContent = `${Number(speedInput.value).toFixed(2)}×`; };
+  speedInput.addEventListener("input", renderSpeed);
+  renderSpeed();
 
   await renderRecentJobs();
 }
@@ -186,8 +196,8 @@ function renderChapters() {
 
     const td3 = document.createElement("td");
     td3.dataset.statusCell = "1";
-    if (c.status === "done") { td3.textContent = "✅ Done"; td3.className = "status-done"; }
-    else if (c.status === "in_progress") { td3.textContent = "⏳ In Progress"; td3.className = "status-in_progress"; }
+    if (c.status === "done") { td3.textContent = "Done"; td3.className = "status-done"; }
+    else if (c.status === "in_progress") { td3.textContent = "In Progress"; td3.className = "status-in_progress"; }
     else if (c.status) td3.textContent = c.status;
 
     tr.append(td0, td1, td2, td3);
@@ -269,8 +279,8 @@ async function onStart() {
   $("resume-btn").hidden = true;
   $("progress-wrap").classList.remove("hidden");
   $("progress-bar").value = 0;
-  $("progress-label").textContent = "Synthesis Progress: 0%";
-  $("eta-label").textContent = "Estimated Time Remaining: —";
+  $("progress-label").textContent = "Progress 0%";
+  $("eta-label").textContent = "ETA —";
   // Mark planned in table
   for (const c of state.chapters) {
     if (selected.includes(c.index)) setChapterStatus(c.index, "Planned", "");
@@ -318,19 +328,20 @@ function handleEvent(evt) {
     case "CORE_STARTED":
       break;
     case "CORE_CHAPTER_STARTED":
-      setChapterStatus(evt.chapter_index, "⏳ In Progress", "in_progress");
+      setChapterStatus(evt.chapter_index, "In Progress", "in_progress");
       break;
     case "CORE_CHAPTER_FINISHED":
-      setChapterStatus(evt.chapter_index, "✅ Done", "done");
+      setChapterStatus(evt.chapter_index, "Done", "done");
       break;
     case "CORE_PROGRESS":
       const s = evt.stats || {};
       $("progress-bar").value = s.progress || 0;
-      $("progress-label").textContent = `Synthesis Progress: ${s.progress || 0}%`;
-      $("eta-label").textContent = `Estimated Time Remaining: ${s.eta || "—"}`;
+      $("progress-label").textContent = `Progress ${s.progress || 0}%`;
+      $("eta-label").textContent = `ETA ${s.eta || "—"}`;
       break;
     case "CORE_FINISHED":
-      $("progress-label").textContent = "Synthesis Complete";
+      $("progress-label").textContent = "Complete";
+      $("eta-label").textContent = "Done";
       $("start-btn").disabled = false;
       refreshFiles();
       break;
@@ -367,7 +378,8 @@ async function onResume() {
   $("start-btn").disabled = true;
   $("progress-wrap").classList.remove("hidden");
   $("progress-bar").value = 0;
-  $("progress-label").textContent = "Resuming…";
+  $("progress-label").textContent = "Resuming";
+  $("eta-label").textContent = "";
   try {
     const res = await fetch(`/api/jobs/${state.job.job_id}/resume`, { method: "POST" });
     if (!res.ok) throw new Error(await res.text());
