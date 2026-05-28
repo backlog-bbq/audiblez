@@ -114,7 +114,9 @@
             <button type="button" class="btn-icon" id="preview-btn"
                     title="Preview voice" aria-label="Preview voice">▶</button>
           </div>
-          <p class="field__hint" id="voiceHint">Pick a voice; tap ▶ to hear a short sample.</p>
+          <p class="field__hint">Edit the sample below, then tap ▶.</p>
+          <textarea id="sample-text" class="sample-text" rows="2"
+                    aria-label="Sample text for voice preview"></textarea>
           <div id="preview-audio-wrap" class="preview-sample is-hint" hidden>
             <audio id="preview-audio" controls></audio>
           </div>

@@ -313,22 +313,31 @@ function updateStats() {
 /* ─── Voice preview ───────────────────────────────────────────────── */
 
 function updateVoiceHint() {
-  const v = $("voice-select").value;
-  const phrase = (state.samplePhrases || {})[v[0]] || "(sample phrase)";
-  const hint = $("voiceHint");
-  hint.textContent = `Sample: “${phrase}” — tap ▶ to hear.`;
+  // Reset the sample text to the language default UNLESS the user has
+  // typed their own phrase that doesn't match any default.
+  const phrases = state.samplePhrases || {};
+  const sample = $("sample-text");
+  if (!sample) return;
+  const known = new Set(Object.values(phrases));
+  if (!sample.value.trim() || known.has(sample.value.trim())) {
+    const v = $("voice-select").value;
+    sample.value = phrases[v[0]] || phrases["a"] || "";
+  }
 }
 
 async function onPreview() {
   const voice = $("voice-select").value;
   if (!voice) return;
   const speed = Number($("speed-input").value);
+  const text = ($("sample-text").value || "").trim();
   const btn = $("preview-btn");
   btn.disabled = true; btn.textContent = "…";
   try {
-    const res = await fetch(
-      `/api/voices/${encodeURIComponent(voice)}/preview?speed=${speed}`
-    );
+    const url =
+      `/api/voices/${encodeURIComponent(voice)}/preview` +
+      `?speed=${speed}` +
+      (text ? `&text=${encodeURIComponent(text)}` : "");
+    const res = await fetch(url);
     if (!res.ok) throw new Error(await res.text());
     const blob = await res.blob();
     const audio = $("preview-audio");

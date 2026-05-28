@@ -11,6 +11,7 @@ import asyncio
 import io
 import json
 import os
+import queue as queue_mod
 import shutil
 import threading
 import time
@@ -49,8 +50,8 @@ EVENT_KEEPALIVE_SECS = 15
 # language code: a/b = English, e = Spanish, f = French, h = Hindi, i = Italian,
 # j = Japanese, p = Portuguese, z = Chinese).
 SAMPLE_PHRASES = {
-    "a": "She turned the page slowly, savoring the silence between paragraphs.",
-    "b": "She turned the page slowly, savoring the silence between paragraphs.",
+    "a": "The quick brown fox jumps over the lazy dog. A good book is a journey you can take a thousand times.",
+    "b": "The quick brown fox jumps over the lazy dog. A good book is a journey you can take a thousand times.",
     "e": "Pasaba las páginas despacio, saboreando el silencio entre los párrafos.",
     "f": "Elle tournait les pages lentement, savourant le silence entre les paragraphes.",
     "h": "वह धीरे-धीरे पन्ने पलट रही थी, अनुच्छेदों के बीच की चुप्पी का स्वाद लेते हुए।",
@@ -116,7 +117,74 @@ class Job:
 
 
 JOBS: dict[str, Job] = {}
-SYNTH_LOCK = threading.Lock()
+
+# Sequential job queue. Each item is a (job, selected_chapters, params,
+# post_event) tuple. A single dedicated worker pulls from this queue so
+# synthesis runs strictly one at a time (Kokoro + torch.set_default_device
+# are process-global; running two at once would clash).
+_QUEUE_SENTINEL = object()
+JOB_QUEUE: queue_mod.Queue = queue_mod.Queue()
+_WORKER_THREAD: threading.Thread | None = None
+
+
+def _process_queue_item(item) -> None:
+    job, selected_chapters, params, post_event = item
+    # Job may have been deleted while queued.
+    if job.job_id not in JOBS:
+        return
+    try:
+        torch.set_default_device(
+            "cuda" if params.get("cuda") and torch.cuda.is_available() else "cpu"
+        )
+    except Exception as e:
+        print(f"torch.set_default_device failed: {e}")
+
+    job.status = "running"
+    try:
+        _save_job_state(job)
+    except Exception as e:
+        print(f"persist on dequeue failed: {e}")
+    # Wake any SSE listeners so they flip to the running state.
+    if job.events_wakeup and job.loop:
+        job.loop.call_soon_threadsafe(job.events_wakeup.set)
+
+    try:
+        core.synthesize(
+            file_path=str(job.epub_path),
+            selected_chapters=selected_chapters,
+            voice=params["voice"],
+            speed=params["speed"],
+            output_folder=str(job.folder),
+            title=job.title,
+            creator=job.creator,
+            cover_image=job.cover_bytes,
+            post_event=post_event,
+        )
+        if job.status == "running":
+            post_event("CORE_ERROR", message="Synthesis finished without producing an M4B.")
+    except Exception as e:
+        traceback.print_exc()
+        if job.status == "running":
+            post_event("CORE_ERROR", message=str(e))
+
+
+def _worker_loop() -> None:
+    while True:
+        item = JOB_QUEUE.get()
+        if item is _QUEUE_SENTINEL:
+            return
+        try:
+            _process_queue_item(item)
+        except Exception:
+            traceback.print_exc()
+
+
+def _ensure_worker_started() -> None:
+    global _WORKER_THREAD
+    if _WORKER_THREAD and _WORKER_THREAD.is_alive():
+        return
+    _WORKER_THREAD = threading.Thread(target=_worker_loop, daemon=True, name="audiblez-worker")
+    _WORKER_THREAD.start()
 
 
 def _state_path(folder: Path) -> Path:
@@ -227,7 +295,9 @@ def _rehydrate_all() -> None:
 async def lifespan(app: FastAPI):
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
     _rehydrate_all()
+    _ensure_worker_started()
     yield
+    JOB_QUEUE.put(_QUEUE_SENTINEL)
 
 
 app = FastAPI(title="audiblez web", lifespan=lifespan)
@@ -268,13 +338,15 @@ async def list_voices():
 
 
 @app.get("/api/voices/{voice}/preview")
-async def voice_preview(voice: str, speed: float = 1.0):
-    """Synthesize a short, language-appropriate sample of `voice` and stream
-    the WAV bytes back. No job context needed — this is purely 'what does
-    this voice sound like'."""
+async def voice_preview(voice: str, speed: float = 1.0, text: str = ""):
+    """Synthesize a short sample of `voice` and stream the WAV bytes back.
+    No job context needed — purely 'what does this voice sound like'.
+    `text` overrides the per-language default phrase."""
     if not any(voice in vlist for vlist in voices.values()):
         raise HTTPException(404, f"Unknown voice: {voice}")
-    sample = SAMPLE_PHRASES.get(voice[0], SAMPLE_PHRASES["a"])
+    sample = (text or "").strip() or SAMPLE_PHRASES.get(voice[0], SAMPLE_PHRASES["a"])
+    # Hard cap so the preview can't be misused for full synthesis.
+    sample = sample[:600]
 
     def _generate() -> bytes:
         from kokoro import KPipeline
@@ -407,8 +479,8 @@ async def get_job(job_id: str):
 @app.delete("/api/jobs/{job_id}")
 async def delete_job(job_id: str):
     job = _get_job(job_id)
-    if job.status == "running":
-        raise HTTPException(409, "Job is running; cannot delete.")
+    if job.status in ("queued", "running"):
+        raise HTTPException(409, f"Job is {job.status}; cannot delete.")
     shutil.rmtree(job.folder, ignore_errors=True)
     JOBS.pop(job_id, None)
     return {"deleted": job_id}
@@ -504,10 +576,8 @@ async def start_synthesis(job_id: str, payload: dict):
     job = _get_job(job_id)
     if job.broken:
         raise HTTPException(410, f"Job is broken: {job.broken}")
-    if job.status == "running":
-        raise HTTPException(409, "Job already running.")
-    if not SYNTH_LOCK.acquire(blocking=False):
-        raise HTTPException(409, "Another synthesis is in progress.")
+    if job.status in ("queued", "running"):
+        raise HTTPException(409, f"Job already {job.status}.")
 
     voice = payload.get("voice")
     speed = float(payload.get("speed", 1.0))
@@ -516,10 +586,8 @@ async def start_synthesis(job_id: str, payload: dict):
     edited_texts = payload.get("edited_texts", {}) or {}
 
     if not voice:
-        SYNTH_LOCK.release()
         raise HTTPException(400, "voice required")
     if not selected_indexes:
-        SYNTH_LOCK.release()
         raise HTTPException(400, "Select at least one chapter.")
 
     selected_chapters = []
@@ -529,19 +597,14 @@ async def start_synthesis(job_id: str, payload: dict):
             if edited is not None:
                 c.extracted_text = edited
             selected_chapters.append(c)
-            # Keep prior 'done' (so the user can see what's already finished
-            # carry over); reset everything else to Planned for this run.
+            # Preserve already-done chapters so resumes don't re-run them
+            # visually; mark everything else Planned for this run.
             if job.chapter_status.get(c.chapter_index) != "done":
                 job.chapter_status[c.chapter_index] = "Planned"
 
-    try:
-        torch.set_default_device("cuda" if use_cuda and torch.cuda.is_available() else "cpu")
-    except Exception as e:
-        print(f"torch.set_default_device failed: {e}")
-
     loop = asyncio.get_running_loop()
     job.loop = loop
-    job.status = "running"
+    job.status = "queued"
     job.error = None
     job.events_log.clear()
     job.last_stats = None
@@ -556,34 +619,32 @@ async def start_synthesis(job_id: str, payload: dict):
     _save_job_state(job)
 
     def post_event(name, **kwargs):
-        payload = {"event": name, "ts": time.time(), **kwargs}
+        evt = {"event": name, "ts": time.time(), **kwargs}
         if name == "CORE_PROGRESS" and "stats" in kwargs:
             s = kwargs["stats"]
-            payload["stats"] = {
+            evt["stats"] = {
                 "progress": getattr(s, "progress", 0),
                 "eta": getattr(s, "eta", ""),
                 "processed_chars": s.processed_chars,
                 "total_chars": s.total_chars,
                 "chars_per_sec": s.chars_per_sec,
             }
-            job.last_stats = payload["stats"]
+            job.last_stats = evt["stats"]
         persist = False
         if name == "CORE_CHAPTER_STARTED":
             job.chapter_status[kwargs["chapter_index"]] = "in_progress"
             persist = True
-        if name == "CORE_CHAPTER_FINISHED":
+        elif name == "CORE_CHAPTER_FINISHED":
             job.chapter_status[kwargs["chapter_index"]] = "done"
             persist = True
-        # Set terminal status BEFORE appending so the SSE iterator's STREAM_END
-        # payload (read right after the event) sees the right status.
-        if name == "CORE_FINISHED":
+        elif name == "CORE_FINISHED":
             job.status = "finished"
             persist = True
         elif name == "CORE_ERROR":
             job.status = "error"
             job.error = kwargs.get("message", str(kwargs))
             persist = True
-        job.events_log.append(payload)
+        job.events_log.append(evt)
         if persist:
             try:
                 _save_job_state(job)
@@ -591,35 +652,9 @@ async def start_synthesis(job_id: str, payload: dict):
                 print(f"Failed to persist job state: {e}")
         loop.call_soon_threadsafe(job.events_wakeup.set)
 
-    def worker():
-        try:
-            core.synthesize(
-                file_path=str(job.epub_path),
-                selected_chapters=selected_chapters,
-                voice=voice,
-                speed=speed,
-                output_folder=str(job.folder),
-                title=job.title,
-                creator=job.creator,
-                cover_image=job.cover_bytes,
-                post_event=post_event,
-            )
-            # synthesize sets terminal status via post_event. If it returned
-            # cleanly without emitting a terminal event (e.g. ffmpeg missing
-            # path that swallowed CORE_FINISHED), force one so SSE closes.
-            if job.status == "running":
-                post_event("CORE_ERROR", message="Synthesis finished without producing an M4B.")
-        except Exception as e:
-            traceback.print_exc()
-            # synthesize() already posted CORE_ERROR inside its try block.
-            # If somehow it didn't, post one now so the stream terminates.
-            if job.status == "running":
-                post_event("CORE_ERROR", message=str(e))
-        finally:
-            SYNTH_LOCK.release()
-
-    threading.Thread(target=worker, daemon=True).start()
-    return {"started": job_id}
+    JOB_QUEUE.put((job, selected_chapters, dict(job.params), post_event))
+    _ensure_worker_started()
+    return {"queued": job_id, "position": JOB_QUEUE.qsize()}
 
 
 @app.post("/api/jobs/{job_id}/resume")
