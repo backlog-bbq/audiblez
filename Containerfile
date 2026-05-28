@@ -35,9 +35,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_PYTHON_INSTALL_DIR=/opt/uv-python \
+    UV_CACHE_DIR=/root/.cache/uv \
     PATH=/opt/venv/bin:/root/.local/bin:$PATH \
-    HF_HOME=/home/audiblez/.cache/huggingface \
-    XDG_CACHE_HOME=/home/audiblez/.cache
+    HF_HOME=/home/audiblez/.cache/huggingface
 
 # --- 1. system deps (python3 + venv only matter on the CUDA base; the
 #        python:3.11-slim image already ships /usr/bin/python).
