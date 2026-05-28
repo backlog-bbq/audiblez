@@ -54,8 +54,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --extra web
 
 # Swap torch for the build-arg-specified variant (CPU or CUDA wheels).
-# This is a no-op when TORCH_INDEX_URL already matches what uv installed.
-RUN /opt/venv/bin/pip install --quiet --upgrade \
+# uv-created venvs don't ship pip, so use `uv pip` which targets the venv
+# directly via VIRTUAL_ENV / --python. No-op when TORCH_INDEX_URL already
+# matches what uv installed.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    VIRTUAL_ENV=/opt/venv uv pip install --upgrade \
         --index-url "${TORCH_INDEX_URL}" \
         --extra-index-url https://pypi.org/simple \
         torch
