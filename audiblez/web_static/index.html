@@ -1,15 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Audiblez</title>
-
   <link rel="stylesheet" href="/static/fonts.css">
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
   <div class="page">
+
     <header class="masthead">
       <div class="masthead__title">
         <div class="brand-mark">A</div>
@@ -18,15 +18,10 @@
           <p class="masthead__tagline">EPUB to audiobook, voiced.</p>
         </div>
       </div>
-      <div class="masthead__actions">
-        <label class="btn btn--ghost" for="epub-input">Open EPUB</label>
-        <input id="epub-input" type="file" accept=".epub" hidden />
-        <button class="btn btn--ghost" id="about-btn">About</button>
-        <div class="masthead__meta">
-          <span class="dot" id="status-dot"></span>
-          <span id="system-info">checking…</span>
-          <span id="upload-status"></span>
-        </div>
+      <div class="masthead__meta">
+        <span class="dot" id="status-dot"></span>
+        <span id="system-info">checking…</span>
+        <button class="btn btn--ghost btn--small" id="about-btn">About</button>
       </div>
     </header>
 
@@ -34,118 +29,175 @@
       <section class="panel panel--full">
         <div class="panel__heading">
           <h2>Begin</h2>
-          <span class="panel__hint">Get started</span>
+          <span class="panel__hint">Drop a file or pick one</span>
         </div>
         <p class="lede">
-          Open an EPUB to extract its chapters, choose a voice, and synthesize.
-          Generated audiobooks are stored on the server and can be downloaded
-          when synthesis finishes.
+          Drop an EPUB below to extract its chapters, choose a voice, and
+          synthesize. Generated audiobooks are saved on the server and can be
+          downloaded when the run finishes.
         </p>
+        <div id="dropZone" class="dropzone dropzone--hero">
+          <input type="file" id="epub-input" accept=".epub" hidden>
+          <div class="dropzone__icon">📖</div>
+          <div class="dropzone__text">
+            <strong>Drop your EPUB here</strong>
+            <span>or <button type="button" class="linkbtn" id="browseBtn">browse</button> to pick a file</span>
+          </div>
+          <div class="dropzone__status" id="upload-status"></div>
+        </div>
         <section id="recent-jobs" class="recent" hidden>
           <div class="panel__heading">
             <h3 class="recent__title">Recent jobs</h3>
-            <span class="panel__hint">Click to resume</span>
+            <span class="panel__hint">Click to load or resume</span>
           </div>
-          <ul id="recent-jobs-list"></ul>
+          <ul id="recent-jobs-list">
+            <li class="jobs__empty">No jobs yet.</li>
+          </ul>
         </section>
       </section>
     </main>
 
     <main class="layout hidden" id="book-view">
-      <aside id="chapters-panel" class="panel">
-        <div class="panel__heading">
-          <h2>Chapters</h2>
-          <span class="panel__hint">Select to include</span>
-        </div>
-        <table id="chapters-table">
-          <thead>
-            <tr><th></th><th>Name</th><th>Length</th><th>Status</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </aside>
 
-      <section id="editor-panel" class="panel">
+      <!-- ── Source: book + chapters ─────────────────────────────────── -->
+      <section class="panel panel--book">
         <div class="panel__heading">
-          <h2 id="chapter-label">Editor</h2>
-          <button class="btn btn--ghost btn--small" id="preview-btn">Preview</button>
+          <h2>Source</h2>
+          <span class="panel__hint">EPUB and chapters</span>
         </div>
-        <textarea id="chapter-text" spellcheck="false" placeholder="Select a chapter on the left."></textarea>
-        <audio id="preview-audio" controls hidden></audio>
+
+        <div id="dropZoneCompact" class="dropzone dropzone--compact">
+          <span>Drop a new EPUB to replace, or</span>
+          <button type="button" class="linkbtn" id="browseBtnCompact">browse</button>
+        </div>
+
+        <article class="bookcard" id="bookCard" hidden>
+          <div class="bookcard__cover">
+            <img id="cover-img" alt="">
+            <div class="bookcard__cover-fallback">No cover</div>
+          </div>
+          <div class="bookcard__meta">
+            <h3 id="bookTitle"></h3>
+            <p id="bookAuthor" class="bookcard__author"></p>
+            <ul class="bookcard__stats">
+              <li><strong id="statChapters">0</strong> chapters</li>
+              <li><strong id="statChars">0</strong> chars</li>
+              <li><strong id="statSelected">0</strong> selected</li>
+            </ul>
+          </div>
+        </article>
+
+        <div class="chapters" id="chaptersWrap" hidden>
+          <div class="chapters__head">
+            <h3>Chapters</h3>
+            <div class="chapters__actions">
+              <button class="linkbtn" id="selAll">all</button>
+              <button class="linkbtn" id="selNone">none</button>
+              <button class="linkbtn" id="selSubstantive">substantive</button>
+            </div>
+          </div>
+          <ul class="chapters__list" id="chapters-list"></ul>
+        </div>
       </section>
 
-      <aside id="sidebar">
-        <section class="panel">
-          <div class="panel__heading">
-            <h2>Book</h2>
-            <span class="panel__hint">Details</span>
-          </div>
-          <div class="book-info">
-            <img id="cover-img" alt="cover" hidden />
-            <dl id="book-meta"></dl>
-          </div>
-        </section>
+      <!-- ── Synthesis: voice / speed / engine / start ──────────────── -->
+      <section class="panel panel--options">
+        <div class="panel__heading">
+          <h2>Synthesis</h2>
+          <span class="panel__hint">Voice, speed, engine</span>
+        </div>
 
-        <section class="panel">
-          <div class="panel__heading">
-            <h2>Parameters</h2>
-            <span class="panel__hint">Voice &amp; engine</span>
-          </div>
-
-          <div class="field">
-            <label>Engine</label>
-            <div class="segmented">
-              <label><input type="radio" name="engine" value="cpu" checked> CPU</label>
-              <label><input type="radio" name="engine" value="cuda" id="engine-cuda"> CUDA</label>
-            </div>
-          </div>
-
-          <div class="field">
-            <label for="voice-select">Voice</label>
+        <div class="field">
+          <label for="voice-select">Voice</label>
+          <div class="voice-row">
             <select id="voice-select"></select>
+            <button type="button" class="btn-icon" id="preview-btn"
+                    title="Preview voice" aria-label="Preview voice">▶</button>
           </div>
+          <p class="field__hint" id="voiceHint">Pick a voice; tap ▶ to hear a short sample.</p>
+          <div id="preview-audio-wrap" class="preview-sample is-hint" hidden>
+            <audio id="preview-audio" controls></audio>
+          </div>
+        </div>
 
-          <div class="field">
-            <label for="speed-input">Speed <span class="field__value" id="speed-value">1.0×</span></label>
-            <input id="speed-input" type="range" min="0.5" max="2.0" step="0.05" value="1.0" />
+        <div class="field">
+          <label for="speed-input">Speed <span class="field__value" id="speed-value">1.00×</span></label>
+          <input id="speed-input" type="range" min="0.5" max="2.0" step="0.05" value="1.0">
+          <div class="field__rangelabels">
+            <span>0.5×</span><span>1.0×</span><span>2.0×</span>
           </div>
+        </div>
 
-          <div class="field">
-            <label>Output folder</label>
-            <code id="output-folder" class="mono-line"></code>
+        <div class="field">
+          <label>Engine</label>
+          <div class="segmented">
+            <label><input type="radio" name="engine" value="cpu" checked><span>CPU</span></label>
+            <label><input type="radio" name="engine" value="cuda" id="engine-cuda"><span>CUDA (GPU)</span></label>
           </div>
-        </section>
+          <p class="field__hint" id="engineHint">CUDA needs a working PyTorch + CUDA install.</p>
+        </div>
 
-        <section class="panel">
-          <div class="panel__heading">
-            <h2>Synthesis</h2>
-            <span class="panel__hint">Generation status</span>
-          </div>
-          <button class="btn btn--primary" id="start-btn">Start Synthesis</button>
+        <div class="field">
+          <label>Output</label>
+          <p class="field__static">
+            <code id="output-folder">outputs/&lt;job-id&gt;/</code>
+            on the server. Download the <code>.m4b</code> from the Activity panel when it's ready.
+          </p>
+        </div>
 
-          <div class="progress-wrap hidden" id="progress-wrap">
-            <div class="progress-meta">
-              <span class="panel__hint" id="progress-label">Progress 0%</span>
-              <span class="panel__hint" id="eta-label">ETA —</span>
-            </div>
-            <progress id="progress-bar" max="100" value="0"></progress>
-          </div>
+        <div class="actions">
+          <button id="start-btn" class="btn btn--primary">
+            <span class="btn__label">Start Synthesis</span>
+          </button>
+          <button id="resume-btn" class="btn btn--primary" hidden>Resume</button>
+        </div>
+      </section>
 
-          <div id="error-message" class="preview-sample is-error hidden">
-            <span id="error-text"></span>
-            <button class="btn btn--primary btn--small" id="resume-btn" hidden>Resume</button>
-          </div>
-        </section>
+      <!-- ── Activity: progress / log / files ────────────────────────── -->
+      <section class="panel panel--run">
+        <div class="panel__heading">
+          <h2>Activity</h2>
+          <span class="panel__hint">Progress · log · downloads</span>
+        </div>
 
-        <section class="panel" id="files-card" hidden>
-          <div class="panel__heading">
-            <h2>Output</h2>
-            <span class="panel__hint">Downloadable</span>
+        <div id="progress-wrap" class="progress" hidden>
+          <div class="progress__head">
+            <span class="progress__state" id="progress-label">queued</span>
+            <span class="progress__pct" id="progress-pct">0%</span>
           </div>
+          <progress id="progress-bar" max="100" value="0"></progress>
+          <div class="progress__sub" id="eta-label">ETA —</div>
+        </div>
+
+        <div id="error-message" class="preview-sample is-error" hidden>
+          <span id="error-text"></span>
+        </div>
+
+        <div class="log" id="logBox" hidden>
+          <pre id="logText"></pre>
+        </div>
+
+        <div class="files" id="files-card" hidden>
+          <h3>Output files</h3>
           <ul id="files-list"></ul>
-        </section>
-      </aside>
+        </div>
+
+        <div class="recent recent--inline" id="recent-jobs-inline" hidden>
+          <div class="panel__heading">
+            <h3 class="recent__title">Recent jobs</h3>
+            <span class="panel__hint">Click to load</span>
+          </div>
+          <ul id="recent-jobs-list-inline">
+            <li class="jobs__empty">No jobs yet.</li>
+          </ul>
+        </div>
+      </section>
     </main>
+
+    <footer class="footer">
+      <span>Built on <a href="https://github.com/santinic/audiblez" target="_blank" rel="noopener">audiblez</a> · Kokoro-82M</span>
+      <span>Files are stored on the server — download what you need before deleting.</span>
+    </footer>
   </div>
 
   <dialog id="about-dialog">
@@ -154,8 +206,8 @@
       <span class="panel__hint">Audiblez</span>
     </div>
     <p class="lede">Generate audiobooks from EPUB files using Kokoro-82M.</p>
-    <p class="muted">MIT Licensed. Original by Claudio Santini and contributors.
-       Web UI mirrors the desktop wxPython interface.</p>
+    <p class="muted">MIT licensed. Original by Claudio Santini and contributors.
+       This web UI mirrors the desktop wxPython interface.</p>
     <form method="dialog" class="dialog-actions">
       <button class="btn btn--ghost">Close</button>
     </form>
