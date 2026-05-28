@@ -145,10 +145,11 @@ async function loadExistingJob(jobId) {
     return;
   }
   hydrateJob(snapshot);
+  // Always offer existing artifacts — a finished job has its M4B; an
+  // errored/interrupted job may have partial WAVs the user wants to grab.
+  refreshFiles();
   if (snapshot.status === "error" || snapshot.status === "interrupted") {
     showError(snapshot.error || `Job ended in ${snapshot.status} state.`);
-  } else if (snapshot.status === "finished") {
-    refreshFiles();
   }
 }
 

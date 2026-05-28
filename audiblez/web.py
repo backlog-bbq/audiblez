@@ -36,6 +36,7 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
+from starlette.types import Scope
 
 from audiblez import core
 from audiblez.voices import flags, voices
@@ -312,7 +313,20 @@ async def index():
     return HTMLResponse(index_path.read_text(encoding="utf-8"))
 
 
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+class NoCacheStaticFiles(StaticFiles):
+    """Force-revalidate static assets so users don't end up with a stale
+    cached app.js or styles.css after a container rebuild."""
+    async def get_response(self, path: str, scope: Scope):
+        resp = await super().get_response(path, scope)
+        # Don't blow away cache for binary fonts — they're content-addressed
+        # in their URL (Google's hash filenames) and rarely change.
+        if path.startswith("fonts/"):
+            return resp
+        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return resp
+
+
+app.mount("/static", NoCacheStaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/api/system")
@@ -506,16 +520,25 @@ async def get_cover(job_id: str):
 
 @app.get("/api/jobs/{job_id}/files")
 async def list_files(job_id: str):
+    from urllib.parse import quote
     job = _get_job(job_id)
     files = []
     for p in sorted(job.folder.iterdir()):
-        if p.is_file() and p.name != job.epub_path.name:
-            files.append({
-                "name": p.name,
-                "size": p.stat().st_size,
-                "download_url": f"/api/jobs/{job_id}/download/{p.name}",
-                "is_m4b": p.suffix.lower() == ".m4b",
-            })
+        if not p.is_file():
+            continue
+        if p.name == job.epub_path.name:
+            continue
+        if p.name == "job.json":
+            continue
+        files.append({
+            "name": p.name,
+            "size": p.stat().st_size,
+            # quote() escapes spaces, '&', '?', and non-ASCII so the link
+            # is a valid URL when the EPUB title is something like
+            # "Animal's Farm & Other Stories.epub".
+            "download_url": f"/api/jobs/{job_id}/download/{quote(p.name)}",
+            "is_m4b": p.suffix.lower() == ".m4b",
+        })
     return {"files": files}
 
 
