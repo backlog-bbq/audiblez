@@ -237,7 +237,12 @@ function renderChapters() {
     toggle.setAttribute("aria-label", "Expand chapter");
     toggle.textContent = "▾";
 
-    row.append(cb, title, info, toggle);
+    // Right-side expand zone: info badge + chevron together, large click target.
+    const expandArea = document.createElement("div");
+    expandArea.className = "chap-expand";
+    expandArea.append(info, toggle);
+
+    row.append(cb, title, expandArea);
 
     const preview = document.createElement("div");
     preview.className = "chapter__preview";
@@ -266,15 +271,15 @@ function renderChapters() {
     preview.append(snippetView, editToggle, ta);
     li.append(row, preview);
 
-    // Row click = toggle the checkbox. Only the chevron expands.
+    // Left ~3/4 of the row toggles selection. Right ~1/4 (.chap-expand) expands.
     row.addEventListener("click", (e) => {
-      if (e.target.closest(".chap-toggle")) return;
+      if (e.target.closest(".chap-expand")) return;
       if (e.target.matches('input[type=checkbox]')) return;
       cb.checked = !cb.checked;
       c.auto_selected = cb.checked;
       updateStats();
     });
-    toggle.addEventListener("click", (e) => {
+    expandArea.addEventListener("click", (e) => {
       e.stopPropagation();
       toggleChapter(li, c.index);
     });

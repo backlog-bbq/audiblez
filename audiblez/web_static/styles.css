@@ -505,7 +505,7 @@ dialog .panel__heading { padding-bottom: 12px; }
 .chapter:last-child { border-bottom: 0; }
 .chapter__row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) minmax(25%, max-content);
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
@@ -518,6 +518,20 @@ dialog .panel__heading { padding-bottom: 12px; }
   min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* Right-side expand affordance: ~25% wide click target containing the
+   info badge and the chevron. Subtle separator + distinct hover so the
+   user can see at a glance which half does what. */
+.chap-expand {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  cursor: pointer;
+  padding: 4px 0 4px 10px;
+  margin: -4px 0;
+  border-left: 1px solid var(--rule-soft);
+}
+.chap-expand:hover { background: rgba(139,30,42,0.06); }
 /* The info cell swaps between length and status; same typography. */
 .chap-info {
   font-family: var(--font-mono); font-size: 10px;
