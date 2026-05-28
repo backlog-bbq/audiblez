@@ -80,9 +80,19 @@ RUN --mount=type=cache,target=/opt/uv-cache \
         --extra-index-url https://pypi.org/simple \
         torch
 
-# --- 6. spaCy multilingual model (~500MB). Cached unless the spacy install above changes.
-#        Pre-downloading here means the first web request doesn't stall on a model fetch.
-RUN /opt/venv/bin/python -m spacy download xx_ent_wiki_sm
+# --- 6. spaCy multilingual model. spaCy's `download` shells out to `pip`,
+#        which uv-created venvs don't ship — without this step the model
+#        appears to install but actually doesn't, and the first runtime
+#        request to `load_spacy()` re-downloads (and may fail under the
+#        runtime user). Install pip into the venv first, then download.
+RUN --mount=type=cache,target=/opt/uv-cache \
+    VIRTUAL_ENV=/opt/venv uv pip install pip \
+    && /opt/venv/bin/python -m spacy download xx_ent_wiki_sm
+
+# Make /opt/uv-cache writable by the runtime user. The cache mount above is
+# build-only; the in-image directory is empty here. Doing this lets the
+# runtime user create subdirs if anything *does* invoke uv at runtime.
+RUN chown -R audiblez:audiblez /opt/uv-cache
 
 # --- 7. app source + project install. THIS is the only layer a code edit invalidates.
 #        `uv sync` re-runs but only rebuilds and installs the local audiblez wheel — all
