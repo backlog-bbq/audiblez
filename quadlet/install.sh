@@ -185,6 +185,26 @@ if ! $sudo systemctl "${systemctl_args[@]}" cat "$service_name" >/dev/null 2>&1;
 fi
 echo "Generated: $service_name"
 
+# CUDA-only: warn if SELinux will block GPU access.
+# /dev/nvidiactl is labeled xserver_misc_device_t, which container_t can only
+# touch when the container_use_xserver_devices boolean is on. Without it the
+# service starts cleanly but `nvidia-smi` / torch.cuda.is_available() fail
+# with "NVML: Insufficient Permissions".
+if [[ "$variant" == "cuda" ]] && command -v getenforce >/dev/null 2>&1; then
+    if [[ "$(getenforce 2>/dev/null)" == "Enforcing" ]]; then
+        bool_line="$(getsebool container_use_xserver_devices 2>/dev/null || true)"
+        if [[ "$bool_line" == *"--> off"* ]]; then
+            echo
+            echo "WARNING: SELinux is enforcing and 'container_use_xserver_devices' is OFF." >&2
+            echo "  The container will start, but GPU access will fail with" >&2
+            echo "  'NVML: Insufficient Permissions'. Enable the boolean:" >&2
+            echo "    sudo setsebool -P container_use_xserver_devices on" >&2
+            echo "  See quadlet/README.md → 'SELinux + GPU' for details." >&2
+            echo
+        fi
+    fi
+fi
+
 if (( was_active )) && (( do_restart )); then
     echo "Restarting $service_name to pick up the new unit…"
     $sudo systemctl "${systemctl_args[@]}" restart "$service_name"
