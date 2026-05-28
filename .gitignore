@@ -8,7 +8,9 @@ chapters.txt
 *.mp3
 *.epub
 *.sh
+!quadlet/install.sh
 *.json
 *.onnx
 dist
 .venv
+outputs/

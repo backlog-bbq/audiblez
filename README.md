@@ -101,12 +101,9 @@ For rootless podman users who want systemd lifecycle, journald logs, and
 auto-restart, ship the units in `quadlet/`:
 
 ```bash
-mkdir -p ~/.config/containers/systemd
-cp quadlet/audiblez-cpu.container ~/.config/containers/systemd/   # or -cuda
-cp quadlet/audiblez.volume        ~/.config/containers/systemd/
-cp quadlet/audiblez.network       ~/.config/containers/systemd/
-systemctl --user daemon-reload
-systemctl --user start audiblez-cpu.service
+quadlet/install.sh --start         # rootless CPU + immediate start
+quadlet/install.sh --cuda --start  # rootless CUDA + start
+quadlet/install.sh --system        # rootful install
 journalctl --user -u audiblez-cpu.service -f
 ```
 

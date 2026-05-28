@@ -31,30 +31,43 @@ podman build -t audiblez:cuda \
   --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124 .
 ```
 
-## Install (rootless, recommended)
+## Install with the convenience script (recommended)
 
 ```sh
-mkdir -p ~/.config/containers/systemd
-cp quadlet/audiblez-cpu.container     ~/.config/containers/systemd/   # or cuda
-cp quadlet/audiblez.volume            ~/.config/containers/systemd/
-cp quadlet/audiblez-outputs.volume    ~/.config/containers/systemd/
-cp quadlet/audiblez.network           ~/.config/containers/systemd/
-
-systemctl --user daemon-reload
-systemctl --user start audiblez-cpu.service
-systemctl --user status audiblez-cpu.service
-journalctl --user -u audiblez-cpu.service -f
+quadlet/install.sh                  # rootless, CPU
+quadlet/install.sh --cuda           # rootless, CUDA
+quadlet/install.sh --system         # rootful (sudo), CPU
+quadlet/install.sh --system --cuda  # rootful (sudo), CUDA
+quadlet/install.sh --start          # also start the service after install
+quadlet/install.sh --uninstall      # remove the units (matches other flags)
 ```
 
-Keep the unit running after logout:
+The script copies the right `.container`, `.volume`, and `.network` files
+into `~/.config/containers/systemd/` (rootless) or `/etc/containers/systemd/`
+(`--system`), runs `systemctl daemon-reload` in the appropriate scope, and
+prints the commands to start and tail the service.
+
+Keep a rootless service running after logout:
 
 ```sh
 loginctl enable-linger $USER
 ```
 
-## Install (rootful)
+## Install manually
+
+If you'd rather copy files yourself:
 
 ```sh
+# Rootless
+mkdir -p ~/.config/containers/systemd
+cp quadlet/audiblez-cpu.container     ~/.config/containers/systemd/   # or cuda
+cp quadlet/audiblez.volume            ~/.config/containers/systemd/
+cp quadlet/audiblez-outputs.volume    ~/.config/containers/systemd/
+cp quadlet/audiblez.network           ~/.config/containers/systemd/
+systemctl --user daemon-reload
+systemctl --user start audiblez-cpu.service
+
+# Rootful
 sudo cp quadlet/audiblez-cpu.container     /etc/containers/systemd/
 sudo cp quadlet/audiblez.volume            /etc/containers/systemd/
 sudo cp quadlet/audiblez-outputs.volume    /etc/containers/systemd/
