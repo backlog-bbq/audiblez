@@ -32,6 +32,7 @@ async function init() {
 
   const v = await fetch("/api/voices").then((r) => r.json());
   state.voices = v.flat;
+  state.samplePhrases = v.sample_phrases || {};
   const sel = $("voice-select");
   sel.innerHTML = "";
   for (const entry of v.flat) {
@@ -40,6 +41,13 @@ async function init() {
     opt.textContent = entry.label;
     sel.appendChild(opt);
   }
+  // Default voice — pick af_bella if available, else the first option.
+  const PREFERRED_VOICE = "af_bella";
+  if (state.voices.some((e) => e.voice === PREFERRED_VOICE)) {
+    sel.value = PREFERRED_VOICE;
+  }
+  sel.addEventListener("change", updateVoiceHint);
+  updateVoiceHint();
 
   bindDropZone("dropZone", "browseBtn");
   bindDropZone("dropZoneCompact", "browseBtnCompact");
@@ -208,21 +216,21 @@ function renderChapters() {
     title.textContent = c.name;
     title.title = c.preview || "";
 
-    const meta = document.createElement("span");
-    meta.className = "chap-meta";
-    meta.textContent = `${fmt(c.length)} ch`;
-
-    const status = document.createElement("span");
-    status.className = "chap-status";
-    status.dataset.statusCell = "1";
-    setStatusText(status, c.status);
+    // Single info cell: shows the char count by default, swapped to the
+    // run status (planned / in_progress / done) once one is set.
+    const info = document.createElement("span");
+    info.className = "chap-info chap-meta";
+    info.dataset.statusCell = "1";
+    info.dataset.length = c.length;
+    if (c.status) setStatusText(info, c.status);
+    else info.textContent = `${fmt(c.length)} ch`;
 
     const toggle = document.createElement("button");
     toggle.type = "button"; toggle.className = "chap-toggle";
     toggle.setAttribute("aria-label", "Expand chapter");
     toggle.textContent = "▾";
 
-    row.append(cb, title, meta, status, toggle);
+    row.append(cb, title, info, toggle);
 
     const preview = document.createElement("div");
     preview.className = "chapter__preview";
@@ -263,11 +271,17 @@ async function toggleChapter(li, idx) {
 }
 
 function setStatusText(node, status) {
-  if (status === "done") { node.textContent = "Done"; node.className = "chap-status status-done"; }
-  else if (status === "in_progress") { node.textContent = "In progress"; node.className = "chap-status status-in_progress"; }
-  else if (status === "Planned") { node.textContent = "Planned"; node.className = "chap-status status-planned"; }
-  else if (status) { node.textContent = status; node.className = "chap-status"; }
-  else { node.textContent = ""; node.className = "chap-status"; }
+  // Single info cell — swap between length (chap-meta) and run status.
+  if (status === "done")          { node.textContent = "Done";        node.className = "chap-info chap-status status-done"; }
+  else if (status === "in_progress") { node.textContent = "In progress"; node.className = "chap-info chap-status status-in_progress"; }
+  else if (status === "Planned")  { node.textContent = "Planned";     node.className = "chap-info chap-status status-planned"; }
+  else if (status)                { node.textContent = status;        node.className = "chap-info chap-status"; }
+  else {
+    // Empty status — revert to char count.
+    const length = node.dataset.length || "0";
+    node.textContent = `${fmt(length)} ch`;
+    node.className = "chap-info chap-meta";
+  }
 }
 
 function quickSelect(kind) {
@@ -296,37 +310,30 @@ function updateStats() {
   $("statSelected").textContent = fmt(selected);
 }
 
-/* ─── Preview ─────────────────────────────────────────────────────── */
+/* ─── Voice preview ───────────────────────────────────────────────── */
+
+function updateVoiceHint() {
+  const v = $("voice-select").value;
+  const phrase = (state.samplePhrases || {})[v[0]] || "(sample phrase)";
+  const hint = $("voiceHint");
+  hint.textContent = `Sample: “${phrase}” — tap ▶ to hear.`;
+}
 
 async function onPreview() {
-  if (!state.job) {
-    alert("Upload an EPUB first.");
-    return;
-  }
-  // Use the open chapter, otherwise the first selected one.
-  const open = document.querySelector(".chapter.is-open");
-  let idx = open ? Number(open.dataset.index) : -1;
-  if (idx < 0) {
-    const first = state.chapters.find((c) => c.auto_selected);
-    idx = first ? first.index : (state.chapters[0] ? state.chapters[0].index : 0);
-  }
-  const editedText = state.edits[idx];
+  const voice = $("voice-select").value;
+  if (!voice) return;
+  const speed = Number($("speed-input").value);
   const btn = $("preview-btn");
   btn.disabled = true; btn.textContent = "…";
   try {
-    const res = await fetch(`/api/jobs/${state.job.job_id}/preview`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chapter_index: idx,
-        voice: $("voice-select").value,
-        speed: Number($("speed-input").value),
-        edited_text: editedText || "",
-      }),
-    });
+    const res = await fetch(
+      `/api/voices/${encodeURIComponent(voice)}/preview?speed=${speed}`
+    );
     if (!res.ok) throw new Error(await res.text());
-    const { wav_url } = await res.json();
+    const blob = await res.blob();
     const audio = $("preview-audio");
-    audio.src = wav_url;
+    if (audio.src && audio.src.startsWith("blob:")) URL.revokeObjectURL(audio.src);
+    audio.src = URL.createObjectURL(blob);
     $("preview-audio-wrap").hidden = false;
     audio.play().catch(() => {});
   } catch (e) {

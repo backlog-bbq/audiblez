@@ -505,7 +505,7 @@ dialog .panel__heading { padding-bottom: 12px; }
 .chapter:last-child { border-bottom: 0; }
 .chapter__row {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
@@ -513,20 +513,20 @@ dialog .panel__heading { padding-bottom: 12px; }
 }
 .chapter__row:hover { background: rgba(192,83,43,0.04); }
 .chapter__row input[type=checkbox] { accent-color: var(--accent); }
-.chap-title { font-size: 13px; color: var(--ink); }
-.chap-meta {
-  font-family: var(--font-mono); font-size: 10px;
-  text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-mute);
-  white-space: nowrap;
+.chap-title {
+  font-size: 13px; color: var(--ink);
+  min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.chap-status {
+/* The info cell swaps between length and status; same typography. */
+.chap-info {
   font-family: var(--font-mono); font-size: 10px;
   text-transform: uppercase; letter-spacing: 0.08em;
-  white-space: nowrap;
+  white-space: nowrap; color: var(--ink-mute);
 }
-.chap-status.status-done { color: var(--good); }
-.chap-status.status-in_progress { color: var(--warn); }
-.chap-status.status-planned { color: var(--ink-mute); }
+.chap-info.status-done { color: var(--good); }
+.chap-info.status-in_progress { color: var(--warn); }
+.chap-info.status-planned { color: var(--ink-mute); }
 .chap-toggle {
   background: none; border: 0; cursor: pointer;
   color: var(--ink-mute); font-size: 14px; padding: 2px 6px;

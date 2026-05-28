@@ -44,6 +44,22 @@ STATIC_DIR = Path(__file__).parent / "web_static"
 MAX_UPLOAD_MB = int(os.environ.get("AUDIBLEZ_MAX_UPLOAD_MB", "200"))
 EVENT_KEEPALIVE_SECS = 15
 
+# Short, language-appropriate phrases for the "how does this voice sound?"
+# button. Keyed by the first character of the Kokoro voice code (which is its
+# language code: a/b = English, e = Spanish, f = French, h = Hindi, i = Italian,
+# j = Japanese, p = Portuguese, z = Chinese).
+SAMPLE_PHRASES = {
+    "a": "She turned the page slowly, savoring the silence between paragraphs.",
+    "b": "She turned the page slowly, savoring the silence between paragraphs.",
+    "e": "Pasaba las páginas despacio, saboreando el silencio entre los párrafos.",
+    "f": "Elle tournait les pages lentement, savourant le silence entre les paragraphes.",
+    "h": "वह धीरे-धीरे पन्ने पलट रही थी, अनुच्छेदों के बीच की चुप्पी का स्वाद लेते हुए।",
+    "i": "Voltava le pagine lentamente, assaporando il silenzio tra i paragrafi.",
+    "j": "彼女はゆっくりとページをめくり、段落の合間の静けさを味わった。",
+    "p": "Ela virava as páginas devagar, saboreando o silêncio entre os parágrafos.",
+    "z": "她慢慢地翻着书页，品味着段落之间的寂静。",
+}
+
 
 @dataclass
 class Job:
@@ -242,12 +258,48 @@ async def list_voices():
     return {
         "flags": flags,
         "voices": voices,
+        "sample_phrases": SAMPLE_PHRASES,
         "flat": [
             {"code": code, "voice": v, "flag": flags[code], "label": f"{flags[code]} {v}"}
             for code, vlist in voices.items()
             for v in vlist
         ],
     }
+
+
+@app.get("/api/voices/{voice}/preview")
+async def voice_preview(voice: str, speed: float = 1.0):
+    """Synthesize a short, language-appropriate sample of `voice` and stream
+    the WAV bytes back. No job context needed — this is purely 'what does
+    this voice sound like'."""
+    if not any(voice in vlist for vlist in voices.values()):
+        raise HTTPException(404, f"Unknown voice: {voice}")
+    sample = SAMPLE_PHRASES.get(voice[0], SAMPLE_PHRASES["a"])
+
+    def _generate() -> bytes:
+        from kokoro import KPipeline
+        import io
+        core.set_espeak_library()
+        core.load_spacy()
+        pipeline = KPipeline(lang_code=voice[0])
+        segments = core.gen_audio_segments(pipeline, sample, voice=voice, speed=speed)
+        if not segments:
+            raise RuntimeError("Voice produced no audio")
+        final_audio = np.concatenate(segments)
+        buf = io.BytesIO()
+        soundfile.write(buf, final_audio, core.sample_rate, format="WAV", subtype="PCM_16")
+        return buf.getvalue()
+
+    try:
+        wav_bytes = await asyncio.to_thread(_generate)
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(500, f"Voice preview failed: {e}")
+    return Response(
+        content=wav_bytes,
+        media_type="audio/wav",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.post("/api/upload")
