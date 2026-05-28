@@ -1,0 +1,5 @@
+# Dedicated user-defined bridge network. Lets us assign a stable name and
+# isolate audiblez from other rootless containers on the host.
+
+[Network]
+NetworkName=audiblez

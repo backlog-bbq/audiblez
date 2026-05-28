@@ -47,6 +47,72 @@ and at the end it will produce a `book.m4b` file with the whole book you can lis
 audiobook player.
 It will only produce the `.m4b` file if you have `ffmpeg` installed on your machine.
 
+## Development setup (uv)
+
+The project is managed by [uv](https://docs.astral.sh/uv/). To work on it from a checkout:
+
+```bash
+uv sync --extra web              # installs all deps including the web UI
+uv run audiblez --help           # CLI
+uv run audiblez-ui               # desktop GUI (needs wxpython on your system)
+uv run audiblez-web              # web UI on http://localhost:8000
+uv run pytest                    # tests
+```
+
+## Web UI
+
+A FastAPI-based browser interface mirrors the desktop GUI: upload an EPUB,
+browse and edit chapters, preview a voice, set parameters, then watch progress
+stream live. Generated files persist under `outputs/<job-id>/` and are
+downloadable from the page.
+
+```bash
+uv sync --extra web
+uv run audiblez-web              # serves on 0.0.0.0:8000
+```
+
+Useful env vars: `AUDIBLEZ_HOST`, `AUDIBLEZ_PORT`, `AUDIBLEZ_OUTPUTS_DIR`,
+`AUDIBLEZ_MAX_UPLOAD_MB`.
+
+## Containers (Docker, Podman, Quadlet)
+
+A single `Containerfile` (with a `Dockerfile` symlink) builds for both CPU and
+CUDA via build args. Run as UID 1000 so output files in bind-mounted volumes
+land with sane ownership — critical for rootless podman.
+
+### Docker / Podman Compose
+
+```bash
+# CPU
+docker compose --profile cpu up --build           # or `podman compose ...`
+
+# CUDA (requires NVIDIA Container Toolkit; for rootless podman also run
+# `sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml` once)
+docker compose --profile cuda up --build
+```
+
+Output `.m4b` files appear under `./outputs/<job-id>/` on the host.
+
+### Quadlet (systemd-native podman units)
+
+For rootless podman users who want systemd lifecycle, journald logs, and
+auto-restart, ship the units in `quadlet/`:
+
+```bash
+mkdir -p ~/.config/containers/systemd
+cp quadlet/audiblez-cpu.container ~/.config/containers/systemd/   # or -cuda
+cp quadlet/audiblez.volume        ~/.config/containers/systemd/
+cp quadlet/audiblez.network       ~/.config/containers/systemd/
+systemctl --user daemon-reload
+systemctl --user start audiblez-cpu.service
+journalctl --user -u audiblez-cpu.service -f
+```
+
+See `quadlet/README.md` for rootful install, CUDA setup, and ownership notes.
+
+> The web UI binds to `0.0.0.0:8000`. It has no authentication — put it behind
+> a reverse proxy + auth before exposing it to a network you don't trust.
+
 ## How to run the GUI
 
 The GUI is a simple graphical interface to use audiblez.

@@ -72,13 +72,9 @@ def set_espeak_library():
 def main(file_path, voice, pick_manually, speed, output_folder='.',
          max_chapters=None, max_sentences=None, selected_chapters=None, post_event=None):
     if post_event: post_event('CORE_STARTED')
-    load_spacy()
     if output_folder != '.':
         Path(output_folder).mkdir(parents=True, exist_ok=True)
 
-    filename = Path(file_path).name
-
-    extension = '.epub'
     book = epub.read_epub(file_path)
     meta_title = book.get_metadata('DC', 'title')
     title = meta_title[0][0] if meta_title else ''
@@ -98,11 +94,44 @@ def main(file_path, voice, pick_manually, speed, output_folder='.',
         else:
             selected_chapters = find_good_chapters(document_chapters)
     print_selected_chapters(document_chapters, selected_chapters)
+
+    synthesize(
+        file_path=file_path,
+        selected_chapters=selected_chapters,
+        voice=voice,
+        speed=speed,
+        output_folder=output_folder,
+        title=title,
+        creator=creator,
+        cover_image=cover_image,
+        post_event=post_event,
+        max_chapters=max_chapters,
+        max_sentences=max_sentences,
+    )
+
+
+def synthesize(file_path, selected_chapters, voice, speed, output_folder='.',
+               title='', creator='', cover_image=b'',
+               post_event=None, max_chapters=None, max_sentences=None):
+    """Run TTS over an already-prepared list of chapters and assemble the M4B.
+
+    Takes chapter objects whose `extracted_text` and `chapter_index` are already
+    populated (and possibly edited by the caller). The CLI uses this via `main()`;
+    the web UI calls it directly so user edits to chapter text survive.
+    """
+    load_spacy()
+    if output_folder != '.':
+        Path(output_folder).mkdir(parents=True, exist_ok=True)
+
+    filename = Path(file_path).name
+    extension = '.epub'
     texts = [c.extracted_text for c in selected_chapters]
 
     has_ffmpeg = shutil.which('ffmpeg') is not None
     if not has_ffmpeg:
-        print('\033[91m' + 'ffmpeg not found. Please install ffmpeg to create mp3 and m4b audiobook files.' + '\033[0m')
+        msg = 'ffmpeg not found. Please install ffmpeg to create mp3 and m4b audiobook files.'
+        print('\033[91m' + msg + '\033[0m')
+        if post_event: post_event('CORE_ERROR', message=msg)
 
     stats = SimpleNamespace(
         total_chars=sum(map(len, texts)),
@@ -113,50 +142,55 @@ def main(file_path, voice, pick_manually, speed, output_folder='.',
     print('Total words:', len(' '.join(texts).split()))
     eta = strfdelta((stats.total_chars - stats.processed_chars) / stats.chars_per_sec)
     print(f'Estimated time remaining (assuming {stats.chars_per_sec} chars/sec): {eta}')
-    set_espeak_library()
-    pipeline = KPipeline(lang_code=voice[0])  # a for american or b for british etc.
 
-    chapter_wav_files = []
-    for i, chapter in enumerate(selected_chapters, start=1):
-        if max_chapters and i > max_chapters: break
-        text = chapter.extracted_text
-        xhtml_file_name = chapter.get_name().replace(' ', '_').replace('/', '_').replace('\\', '_')
-        chapter_wav_path = Path(output_folder) / filename.replace(extension, f'_chapter_{i}_{voice}_{xhtml_file_name}.wav')
-        chapter_wav_files.append(chapter_wav_path)
-        if Path(chapter_wav_path).exists():
-            print(f'File for chapter {i} already exists. Skipping')
-            stats.processed_chars += len(text)
-            if post_event:
-                post_event('CORE_CHAPTER_FINISHED', chapter_index=chapter.chapter_index)
-            continue
-        if len(text.strip()) < 10:
-            print(f'Skipping empty chapter {i}')
-            chapter_wav_files.remove(chapter_wav_path)
-            continue
-        if i == 1:
-            # add intro text
-            text = f'{title} – {creator}.\n\n' + text
-        start_time = time.time()
-        if post_event: post_event('CORE_CHAPTER_STARTED', chapter_index=chapter.chapter_index)
-        audio_segments = gen_audio_segments(
-            pipeline, text, voice, speed, stats, post_event=post_event, max_sentences=max_sentences)
-        if audio_segments:
-            final_audio = np.concatenate(audio_segments)
-            soundfile.write(chapter_wav_path, final_audio, sample_rate)
-            end_time = time.time()
-            delta_seconds = end_time - start_time
-            chars_per_sec = len(text) / delta_seconds
-            print('Chapter written to', chapter_wav_path)
-            if post_event: post_event('CORE_CHAPTER_FINISHED', chapter_index=chapter.chapter_index)
-            print(f'Chapter {i} read in {delta_seconds:.2f} seconds ({chars_per_sec:.0f} characters per second)')
-        else:
-            print(f'Warning: No audio generated for chapter {i}')
-            chapter_wav_files.remove(chapter_wav_path)
+    try:
+        set_espeak_library()
+        pipeline = KPipeline(lang_code=voice[0])  # a for american or b for british etc.
+        chapter_wav_files = []
+        for i, chapter in enumerate(selected_chapters, start=1):
+            if max_chapters and i > max_chapters: break
+            text = chapter.extracted_text
+            xhtml_file_name = chapter.get_name().replace(' ', '_').replace('/', '_').replace('\\', '_')
+            chapter_wav_path = Path(output_folder) / filename.replace(extension, f'_chapter_{i}_{voice}_{xhtml_file_name}.wav')
+            chapter_wav_files.append(chapter_wav_path)
+            if Path(chapter_wav_path).exists():
+                print(f'File for chapter {i} already exists. Skipping')
+                stats.processed_chars += len(text)
+                if post_event:
+                    post_event('CORE_CHAPTER_FINISHED', chapter_index=chapter.chapter_index)
+                continue
+            if len(text.strip()) < 10:
+                print(f'Skipping empty chapter {i}')
+                chapter_wav_files.remove(chapter_wav_path)
+                continue
+            if i == 1:
+                # add intro text
+                text = f'{title} – {creator}.\n\n' + text
+            start_time = time.time()
+            if post_event: post_event('CORE_CHAPTER_STARTED', chapter_index=chapter.chapter_index)
+            audio_segments = gen_audio_segments(
+                pipeline, text, voice, speed, stats, post_event=post_event, max_sentences=max_sentences)
+            if audio_segments:
+                final_audio = np.concatenate(audio_segments)
+                soundfile.write(chapter_wav_path, final_audio, sample_rate)
+                end_time = time.time()
+                delta_seconds = end_time - start_time
+                chars_per_sec = len(text) / delta_seconds
+                print('Chapter written to', chapter_wav_path)
+                if post_event: post_event('CORE_CHAPTER_FINISHED', chapter_index=chapter.chapter_index)
+                print(f'Chapter {i} read in {delta_seconds:.2f} seconds ({chars_per_sec:.0f} characters per second)')
+            else:
+                print(f'Warning: No audio generated for chapter {i}')
+                chapter_wav_files.remove(chapter_wav_path)
 
-    if has_ffmpeg:
-        create_index_file(title, creator, chapter_wav_files, output_folder)
-        create_m4b(chapter_wav_files, filename, cover_image, output_folder)
-        if post_event: post_event('CORE_FINISHED')
+        if has_ffmpeg:
+            create_index_file(title, creator, chapter_wav_files, output_folder)
+            create_m4b(chapter_wav_files, filename, cover_image, output_folder)
+            if post_event: post_event('CORE_FINISHED')
+    except Exception as e:
+        traceback.print_exc()
+        if post_event: post_event('CORE_ERROR', message=str(e))
+        raise
 
 
 def find_cover(book):
@@ -293,12 +327,26 @@ def strfdelta(tdelta, fmt='{D:02}d {H:02}h {M:02}m {S:02}s'):
 
 
 def concat_wavs_with_ffmpeg(chapter_files, output_folder, filename):
+    """Concat WAVs and transcode to AAC inside an M4A container.
+
+    pcm_s16le cannot be muxed into MP4/M4B, so we transcode here once instead
+    of carrying raw PCM through to create_m4b (which would fail at mux time).
+    See upstream PR #131 / issues #130, #117, #90, #78.
+    """
     wav_list_txt = Path(output_folder) / filename.replace('.epub', '_wav_list.txt')
     with open(wav_list_txt, 'w') as f:
         for wav_file in chapter_files:
             f.write(f"file '{wav_file}'\n")
-    concat_file_path = Path(output_folder) / filename.replace('.epub', '.tmp.mp4')
-    subprocess.run(['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', wav_list_txt, '-c', 'copy', concat_file_path])
+    concat_file_path = Path(output_folder) / filename.replace('.epub', '.tmp.m4a')
+    cmd = [
+        'ffmpeg', '-y',
+        '-f', 'concat', '-safe', '0',
+        '-i', str(wav_list_txt),
+        '-c:a', 'aac', '-b:a', '64k',
+        str(concat_file_path),
+    ]
+    print('FFmpeg concat command:', ' '.join(cmd))
+    subprocess.run(cmd, check=True)
     Path(wav_list_txt).unlink()
     return concat_file_path
 
@@ -314,36 +362,34 @@ def create_m4b(chapter_files, filename, cover_image, output_folder):
         with open(cover_file_path, 'wb') as f:
             f.write(cover_image)
         cover_image_args = [
-            '-i', f'{cover_file_path}',
-            '-map', '2:v',  # Map cover image
-            '-disposition:v', 'attached_pic',  # Ensure cover is embedded
-            '-c:v', 'copy',  # Keep cover unchanged
+            '-i', str(cover_file_path),
+            '-map', '2:v',
+            '-disposition:v', 'attached_pic',
+            '-c:v', 'copy',
         ]
     else:
         cover_image_args = []
 
-    proc = subprocess.run([
-        'ffmpeg',
-        '-y',  # Overwrite output
-        
-        '-i', f'{concat_file_path}',  # Input audio
-        '-i', f'{chapters_txt_path}',  # Input chapters
-        *cover_image_args,  # Cover image (if provided)
+    cmd = [
+        'ffmpeg', '-y',
+        '-i', str(concat_file_path),
+        '-i', str(chapters_txt_path),
+        *cover_image_args,
+        '-map', '0:a',
+        '-c:a', 'copy',  # audio is already AAC from concat stage
+        '-map_metadata', '1',
+        '-f', 'mp4',
+        str(final_filename),
+    ]
+    print('FFmpeg M4B creation command:', ' '.join(cmd))
+    proc = subprocess.run(cmd)
 
-        '-map', '0:a',  # Map audio
-        '-c:a', 'aac',  # Convert to AAC
-        '-b:a', '64k',  # Reduce bitrate for smaller size
-
-        '-map_metadata', '1', # Map metadata
-
-        '-f', 'mp4',  # Output as M4B
-        f'{final_filename}'  # Output file
-    ])
-
-    Path(concat_file_path).unlink()
+    Path(concat_file_path).unlink(missing_ok=True)
     if proc.returncode == 0:
         print(f'{final_filename} created. Enjoy your audiobook.')
         print('Feel free to delete the intermediary .wav chapter files, the .m4b is all you need.')
+    else:
+        print(f'\033[91mFFmpeg failed to create {final_filename} (return code {proc.returncode})\033[0m')
 
 
 def probe_duration(file_name):

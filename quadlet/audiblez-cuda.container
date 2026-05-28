@@ -1,0 +1,47 @@
+# Audiblez (CUDA) — podman Quadlet unit.
+#
+# Requires NVIDIA Container Toolkit + CDI on the host:
+#   sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+#
+# Install (user-level / rootless):
+#   mkdir -p ~/.config/containers/systemd
+#   cp quadlet/audiblez-cuda.container ~/.config/containers/systemd/
+#   cp quadlet/audiblez.volume         ~/.config/containers/systemd/
+#   cp quadlet/audiblez.network        ~/.config/containers/systemd/
+#   systemctl --user daemon-reload
+#   systemctl --user start audiblez-cuda.service
+#
+# Build the image first with the CUDA build args (see Containerfile header).
+
+[Unit]
+Description=Audiblez (CUDA) — EPUB to audiobook web UI
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=audiblez:cuda
+ContainerName=audiblez-cuda
+
+PublishPort=8000:8000
+
+Environment=AUDIBLEZ_OUTPUTS_DIR=/app/outputs
+Environment=AUDIBLEZ_HOST=0.0.0.0
+Environment=AUDIBLEZ_PORT=8000
+Environment=HF_HOME=/home/audiblez/.cache/huggingface
+
+Volume=%h/audiblez/outputs:/app/outputs:Z
+Volume=audiblez.volume:/home/audiblez/.cache/huggingface:Z
+
+Network=audiblez.network
+
+# CDI device request — works under rootless podman with NVIDIA Container Toolkit.
+AddDevice=nvidia.com/gpu=all
+
+User=1000:1000
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=1200
+
+[Install]
+WantedBy=default.target

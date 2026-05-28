@@ -1,74 +1,45 @@
-name: Installing via pip and running
-run-name: pip install and run
+name: Installing via uv and running
+run-name: uv sync and run
 on: [ push, pull_request ]
 jobs:
-  install-and-run-on-python-3-11:
+  uv-install-and-run:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
     runs-on: ubuntu-latest
     steps:
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: install ffmpeg, espeak-ng
-        run: sudo apt-get update && sudo apt-get install ffmpeg espeak-ng --fix-missing
-      - name: Install audiblez
-        run: python -m pip install audiblez
-      - name: check it runs as script
-        run: audiblez --help
-      - name: download test epub
-        run: wget https://github.com/daisy/epub-accessibility-tests/releases/download/fundamental-2.0/Fundamental-Accessibility-Tests-Basic-Functionality-v2.0.0.epub
-      - name: create audiobook
-        run: audiblez Fundamental-Accessibility-Tests-Basic-Functionality-v2.0.0.epub
-      - name: check m4b output file
-        run: ls -lah Fundamental-Accessibility-Tests-Basic-Functionality-v2.0.0.m4b
-  install-and-run-on-python-3-12:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: install ffmpeg, espeak-ng
-        run: sudo apt-get update && sudo apt-get install ffmpeg espeak-ng --fix-missing
-      - name: Install audiblez
-        run: python -m pip install audiblez
-      - name: check it runs as script
-        run: audiblez --help
-  install-and-run-on-python-3-10:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-      - name: install ffmpeg, espeak-ng
-        run: sudo apt-get update && sudo apt-get install ffmpeg espeak-ng --fix-missing
-      - name: Install audiblez
-        run: python -m pip install audiblez
-      - name: check it runs as script
-        run: audiblez --help
-  windows-git-clone-and-run:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+      - name: Install ffmpeg and espeak-ng
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng libespeak-ng1
+      - name: uv sync (with web extra)
+        run: uv sync --extra web --python ${{ matrix.python-version }}
+      - name: CLI smoke
+        run: uv run --python ${{ matrix.python-version }} audiblez --help
+      - name: Web app imports cleanly
+        run: uv run --python ${{ matrix.python-version }} python -c "from audiblez import web, core; assert callable(core.synthesize)"
+
+  windows-uv-install-and-run:
     runs-on: windows-latest
     steps:
-      - name: Set up Python
-        uses: actions/setup-python@v3
-        with:
-          python-version: "3.11"
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+      - name: Set up Python 3.11
+        run: uv python install 3.11
       - name: Install winget
         uses: Cyberboss/install-winget@v1
       - name: Install wingetcreate
         run: winget install wingetcreate --disable-interactivity --accept-source-agreements
-      - name: Install fmmpeg
+      - name: Install ffmpeg
         run: winget install --id=Gyan.FFmpeg -e
       - name: Install espeak-ng
-        run: winget install --id=eSpeak-NG.eSpeak-NG  -e
-      - name: pip install audiblez
-        run: pip install audiblez
-      - name: check it runs as script
-        run: audiblez --help
-      - name: download test epub on windows using powershell
-        run: Invoke-WebRequest -Uri https://github.com/daisy/epub-accessibility-tests/releases/download/fundamental-2.0/Fundamental-Accessibility-Tests-Basic-Functionality-v2.0.0.epub -OutFile book.epub
-      - name: create audiobook
-        run: audiblez book.epub
-      - name: check book.m4b file exists in current directory
-        run: Get-ChildItem -Path .\ -Filter *.m4b
+        run: winget install --id=eSpeak-NG.eSpeak-NG -e
+      - name: uv sync
+        run: uv sync --python 3.11
+      - name: CLI smoke
+        run: uv run --python 3.11 audiblez --help

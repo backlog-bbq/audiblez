@@ -1,0 +1,67 @@
+# Audiblez container compose file.
+# Works with `docker compose`, `podman compose`, and (mostly) `podman-compose`.
+#
+# CPU:
+#   docker compose --profile cpu up --build
+#   podman compose --profile cpu up --build
+#
+# CUDA (NVIDIA Container Toolkit + CDI required for rootless podman:
+#       sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml):
+#   docker compose --profile cuda up --build
+#   podman compose --profile cuda up --build
+
+x-common: &common
+  ports:
+    - "8000:8000"
+  environment:
+    AUDIBLEZ_OUTPUTS_DIR: /app/outputs
+    AUDIBLEZ_HOST: 0.0.0.0
+    AUDIBLEZ_PORT: "8000"
+    HF_HOME: /home/audiblez/.cache/huggingface
+  volumes:
+    # `:z` lets SELinux-enforcing hosts (Fedora/RHEL) share the label.
+    # Harmless on Docker/Ubuntu hosts.
+    - ./outputs:/app/outputs:z
+    - hf-cache:/home/audiblez/.cache/huggingface:z
+  restart: unless-stopped
+  # Keep file ownership sane on the host under rootless podman:
+  user: "1000:1000"
+
+services:
+  audiblez-cpu:
+    <<: *common
+    profiles: ["cpu"]
+    image: audiblez:cpu
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BASE_IMAGE: python:3.11-slim
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cpu
+
+  audiblez-cuda:
+    <<: *common
+    profiles: ["cuda"]
+    image: audiblez:cuda
+    build:
+      context: .
+      dockerfile: Containerfile
+      args:
+        BASE_IMAGE: nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu124
+    # Rootless-podman-friendly GPU request via CDI. Docker with the NVIDIA
+    # Container Toolkit also accepts this device spec.
+    devices:
+      - nvidia.com/gpu=all
+    # Equivalent legacy syntax (Docker Compose v2 + nvidia runtime). Leave
+    # commented unless your tooling rejects the `devices:` form above.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+volumes:
+  hf-cache:

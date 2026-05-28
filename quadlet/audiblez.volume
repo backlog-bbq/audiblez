@@ -1,0 +1,5 @@
+# Named volume for the HuggingFace cache so Kokoro model weights survive
+# container rebuilds.
+
+[Volume]
+VolumeName=audiblez

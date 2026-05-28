@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Audiblez</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">📚 Audiblez</div>
+    <label class="btn" for="epub-input">📁 Open EPUB</label>
+    <input id="epub-input" type="file" accept=".epub" hidden />
+    <button class="btn" id="about-btn">ℹ️ About</button>
+    <span id="system-info" class="muted"></span>
+    <span id="upload-status" class="muted"></span>
+  </header>
+
+  <main class="grid" id="empty-state">
+    <div class="placeholder">
+      <h2>Open an EPUB to begin.</h2>
+      <p>Generated audiobooks are saved on the server and can be downloaded from this page when synthesis finishes.</p>
+    </div>
+  </main>
+
+  <main class="grid hidden" id="book-view">
+    <aside id="chapters-panel" class="panel">
+      <h3>Chapters</h3>
+      <p class="muted">Select chapters to include in the audiobook.</p>
+      <table id="chapters-table">
+        <thead>
+          <tr><th></th><th>Name</th><th>Length</th><th>Status</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </aside>
+
+    <section id="editor-panel" class="panel">
+      <div class="editor-header">
+        <h3 id="chapter-label">Edit / Preview content</h3>
+        <button class="btn" id="preview-btn">🔊 Preview</button>
+      </div>
+      <textarea id="chapter-text" spellcheck="false" placeholder="Select a chapter on the left."></textarea>
+      <audio id="preview-audio" controls hidden></audio>
+    </section>
+
+    <aside id="sidebar" class="panel">
+      <section class="card">
+        <h3>Book Details</h3>
+        <div class="book-info">
+          <img id="cover-img" alt="cover" hidden />
+          <dl id="book-meta"></dl>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3>Audiobook Parameters</h3>
+        <div class="form-row">
+          <label>Engine</label>
+          <div>
+            <label><input type="radio" name="engine" value="cpu" checked> CPU</label>
+            <label><input type="radio" name="engine" value="cuda" id="engine-cuda"> CUDA</label>
+          </div>
+        </div>
+        <div class="form-row">
+          <label for="voice-select">Voice</label>
+          <select id="voice-select"></select>
+        </div>
+        <div class="form-row">
+          <label for="speed-input">Speed</label>
+          <input id="speed-input" type="number" min="0.5" max="2.0" step="0.05" value="1.0" />
+        </div>
+        <div class="form-row">
+          <label>Output Folder</label>
+          <code id="output-folder" class="muted"></code>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3>Audiobook Generation Status</h3>
+        <button class="btn primary" id="start-btn">🚀 Start Audiobook Synthesis</button>
+        <div class="progress-wrap hidden" id="progress-wrap">
+          <label id="progress-label">Synthesis Progress: 0%</label>
+          <progress id="progress-bar" max="100" value="0"></progress>
+          <p id="eta-label" class="muted">Estimated Time Remaining: —</p>
+        </div>
+        <div id="error-message" class="error hidden"></div>
+      </section>
+
+      <section class="card" id="files-card" hidden>
+        <h3>Output Files</h3>
+        <ul id="files-list"></ul>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="about-dialog">
+    <h2>Audiblez</h2>
+    <p>Generate audiobooks from EPUB files using Kokoro-82M.</p>
+    <p>MIT Licensed. Original by Claudio Santini and contributors.<br>
+       Web UI matches the desktop wxPython interface.</p>
+    <form method="dialog"><button class="btn">Close</button></form>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
