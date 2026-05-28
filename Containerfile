@@ -35,7 +35,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_PYTHON_INSTALL_DIR=/opt/uv-python \
-    UV_CACHE_DIR=/root/.cache/uv \
+    UV_CACHE_DIR=/opt/uv-cache \
     PATH=/opt/venv/bin:/root/.local/bin:$PATH \
     HF_HOME=/home/audiblez/.cache/huggingface
 
@@ -55,22 +55,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # --- 2. uv binary — version-pinned, same binary works under docker / podman / buildah.
 COPY --from=ghcr.io/astral-sh/uv:0.8.17 /uv /uvx /usr/local/bin/
 
-# --- 3. runtime user, created up front so later COPYs don't bust this layer.
+# --- 3. runtime user + cache dirs. Put the uv cache in /opt/uv-cache (created
+#        world-writable up front) so the buildkit cache mount works under
+#        both docker and rootless podman build — /root/.cache is unreliable
+#        under rootless user namespaces.
 RUN useradd -u 1000 -m -s /bin/bash audiblez \
-    && mkdir -p /app/outputs /home/audiblez/.cache \
-    && chown -R audiblez:audiblez /app /home/audiblez
+    && mkdir -p /app/outputs /home/audiblez/.cache /opt/uv-cache \
+    && chown -R audiblez:audiblez /app /home/audiblez \
+    && chmod 0777 /opt/uv-cache
 
 WORKDIR /app
 
 # --- 4. python dependencies. Only invalidated by pyproject.toml / uv.lock changes.
 #        README.md is included because hatchling reads it for package metadata.
 COPY pyproject.toml uv.lock README.md ./
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,target=/opt/uv-cache \
     uv sync --frozen --no-install-project --extra web
 
 # --- 5. torch swap (CPU vs CUDA wheels). Cached as long as TORCH_INDEX_URL is unchanged.
 #        uv-created venvs don't ship pip, so use `uv pip` which targets the venv via VIRTUAL_ENV.
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,target=/opt/uv-cache \
     VIRTUAL_ENV=/opt/venv uv pip install --upgrade \
         --index-url "${TORCH_INDEX_URL}" \
         --extra-index-url https://pypi.org/simple \
@@ -84,7 +88,7 @@ RUN /opt/venv/bin/python -m spacy download xx_ent_wiki_sm
 #        `uv sync` re-runs but only rebuilds and installs the local audiblez wheel — all
 #        external deps and the spaCy model are already in place.
 COPY audiblez ./audiblez
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,target=/opt/uv-cache \
     uv sync --frozen --extra web
 
 USER audiblez
