@@ -97,9 +97,17 @@ RUN chown -R audiblez:audiblez /opt/uv-cache
 # --- 7. app source + project install. THIS is the only layer a code edit invalidates.
 #        `uv sync` re-runs but only rebuilds and installs the local audiblez wheel — all
 #        external deps and the spaCy model are already in place.
+#        --inexact: don't prune packages that aren't in uv.lock (pip + the
+#        xx_ent_wiki_sm model installed above would otherwise be removed,
+#        which broke `load_spacy()` at runtime).
 COPY audiblez ./audiblez
 RUN --mount=type=cache,target=/opt/uv-cache \
-    uv sync --frozen --extra web
+    uv sync --frozen --inexact --extra web
+
+# Hand the venv to the runtime user. The model is already there; this just
+# means a runtime `pip install` (e.g., a future model swap) would succeed
+# without needing root.
+RUN chown -R audiblez:audiblez /opt/venv
 
 USER audiblez
 EXPOSE 8009
