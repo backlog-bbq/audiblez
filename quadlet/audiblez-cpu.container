@@ -31,7 +31,7 @@ Wants=network-online.target
 # resolution (which otherwise fails under systemd: "short-name resolution
 # enforced but cannot prompt without a TTY").
 Image=localhost/audiblez:cpu
-PullPolicy=never
+Pull=never
 ContainerName=audiblez-cpu
 
 PublishPort=8000:8000

@@ -25,7 +25,7 @@ Wants=network-online.target
 # resolution (which otherwise fails under systemd: "short-name resolution
 # enforced but cannot prompt without a TTY").
 Image=localhost/audiblez:cuda
-PullPolicy=never
+Pull=never
 ContainerName=audiblez-cuda
 
 PublishPort=8000:8000

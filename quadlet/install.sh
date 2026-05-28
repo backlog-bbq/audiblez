@@ -141,6 +141,34 @@ done
 echo "Reloading systemd…"
 $sudo systemctl "${systemctl_args[@]}" daemon-reload
 
+# Verify the Quadlet generator actually produced the .service unit.
+# If a .container file has a syntax error or unknown directive, the unit
+# is silently skipped and `systemctl start` later reports "Unit not found".
+if ! $sudo systemctl "${systemctl_args[@]}" cat "$service_name" >/dev/null 2>&1; then
+    echo
+    echo "ERROR: Quadlet did not generate $service_name." >&2
+    echo "Common causes:" >&2
+    echo "  - podman < 4.4 (no Quadlet support)" >&2
+    echo "  - a syntax error or unknown directive in a .container/.volume/.network file" >&2
+    echo "  - rootless: your user systemd instance isn't running (try 'loginctl enable-linger \$USER')" >&2
+    echo
+    # Quadlet ships a dry-run binary that prints exactly what it would (or would not) generate.
+    quadlet_bin=""
+    for candidate in /usr/libexec/podman/quadlet /usr/lib/podman/quadlet /usr/lib/systemd/user-generators/podman-user-generator; do
+        if [[ -x "$candidate" ]]; then quadlet_bin="$candidate"; break; fi
+    done
+    if [[ -n "$quadlet_bin" ]]; then
+        echo "Quadlet dry-run output ($quadlet_bin):" >&2
+        if [[ "$scope" == "user" ]]; then
+            "$quadlet_bin" -dryrun -user 2>&1 | sed 's/^/  /' >&2
+        else
+            $sudo "$quadlet_bin" -dryrun 2>&1 | sed 's/^/  /' >&2
+        fi
+    fi
+    exit 1
+fi
+echo "Generated: $service_name"
+
 if (( do_start )); then
     echo "Starting $service_name…"
     $sudo systemctl "${systemctl_args[@]}" start "$service_name"
