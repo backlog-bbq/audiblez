@@ -56,21 +56,31 @@ class Job:
     book: Any = None  # ebooklib book (not serialized)
     document_chapters: list = field(default_factory=list)
     auto_selected_indexes: list[int] = field(default_factory=list)
-    status: str = "ready"  # ready | queued | running | finished | error
+    status: str = "ready"  # ready | queued | running | finished | error | interrupted
     error: str | None = None
     loop: asyncio.AbstractEventLoop | None = None
     events_log: list[dict] = field(default_factory=list)
     events_wakeup: asyncio.Event | None = None
     last_stats: dict | None = None
     chapter_status: dict[int, str] = field(default_factory=dict)
+    # Last-used synthesis params — enough to /resume without further UI input.
+    params: dict | None = None
+    created_at: float = 0.0
+    updated_at: float = 0.0
+    broken: str | None = None  # set when the EPUB is missing or unreadable
 
     def snapshot(self) -> dict:
+        selected_idx = set((self.params or {}).get("selected_chapter_indexes", []))
         return {
             "job_id": self.job_id,
             "title": self.title,
             "author": self.creator,
             "status": self.status,
             "error": self.error,
+            "broken": self.broken,
+            "params": self.params,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
             "total_chars": sum(len(c.extracted_text) for c in self.document_chapters),
             "chapters": [
                 {
@@ -78,6 +88,7 @@ class Job:
                     "name": getattr(c, "short_name", c.get_name()),
                     "length": len(c.extracted_text),
                     "auto_selected": c.chapter_index in self.auto_selected_indexes,
+                    "selected": c.chapter_index in selected_idx,
                     "status": self.chapter_status.get(c.chapter_index, ""),
                     "preview": core.chapter_beginning_one_liner(c, 50),
                 }
@@ -92,9 +103,114 @@ JOBS: dict[str, Job] = {}
 SYNTH_LOCK = threading.Lock()
 
 
+def _state_path(folder: Path) -> Path:
+    return folder / "job.json"
+
+
+def _save_job_state(job: Job) -> None:
+    """Persist enough of a job to resume after a server restart."""
+    job.updated_at = time.time()
+    state = {
+        "job_id": job.job_id,
+        "epub_filename": job.epub_path.name,
+        "title": job.title,
+        "author": job.creator,
+        "status": job.status,
+        "error": job.error,
+        "params": job.params,
+        "chapter_status": {str(k): v for k, v in job.chapter_status.items()},
+        "auto_selected_indexes": list(job.auto_selected_indexes),
+        "created_at": job.created_at,
+        "updated_at": job.updated_at,
+    }
+    tmp = _state_path(job.folder).with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    tmp.replace(_state_path(job.folder))
+
+
+def _load_job_state(folder: Path) -> Job | None:
+    """Rebuild a Job from a folder. Returns None if the folder isn't a job."""
+    state_path = _state_path(folder)
+    if not state_path.exists():
+        return None
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"Skipping malformed job state at {state_path}: {e}")
+        return None
+
+    epub_path = folder / state["epub_filename"]
+    job = Job(
+        job_id=state["job_id"],
+        folder=folder,
+        epub_path=epub_path,
+        title=state.get("title", ""),
+        creator=state.get("author", ""),
+        # If we crashed mid-run, the on-disk state still says "running".
+        # Treat that as "interrupted" so the user can /resume.
+        status="interrupted" if state.get("status") == "running" else state.get("status", "ready"),
+        error=state.get("error"),
+        params=state.get("params"),
+        chapter_status={int(k): v for k, v in (state.get("chapter_status") or {}).items()},
+        auto_selected_indexes=state.get("auto_selected_indexes", []),
+        created_at=state.get("created_at", time.time()),
+        updated_at=state.get("updated_at", time.time()),
+    )
+
+    if not epub_path.exists():
+        job.broken = "EPUB file missing"
+        return job
+
+    try:
+        from ebooklib import epub
+        book = epub.read_epub(str(epub_path))
+    except Exception as e:
+        job.broken = f"Could not re-parse EPUB: {e}"
+        return job
+
+    job.book = book
+    cover_maybe = core.find_cover(book)
+    job.cover_bytes = cover_maybe.get_content() if cover_maybe else b""
+    document_chapters = core.find_document_chapters_and_extract_texts(book)
+    for c in document_chapters:
+        c.short_name = (
+            c.get_name()
+            .replace(".xhtml", "")
+            .replace("xhtml/", "")
+            .replace(".html", "")
+            .replace("Text/", "")
+        )
+    job.document_chapters = document_chapters
+
+    # Re-apply edits so the editor and resume see the same text as last run.
+    edited_texts = (job.params or {}).get("edited_texts") or {}
+    for c in document_chapters:
+        edited = edited_texts.get(str(c.chapter_index))
+        if edited is not None:
+            c.extracted_text = edited
+
+    return job
+
+
+def _rehydrate_all() -> None:
+    """Scan OUTPUTS_DIR and populate JOBS from any job folders we find."""
+    if not OUTPUTS_DIR.exists():
+        return
+    for sub in sorted(OUTPUTS_DIR.iterdir()):
+        if not sub.is_dir():
+            continue
+        j = _load_job_state(sub)
+        if j is None:
+            continue
+        JOBS[j.job_id] = j
+        note = f" ({j.broken})" if j.broken else ""
+        print(f"Rehydrated job {j.job_id}: status={j.status}{note}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    _rehydrate_all()
     yield
 
 
@@ -183,6 +299,7 @@ async def upload_epub(request: Request, file: UploadFile):
     auto_selected = core.find_good_chapters(document_chapters)
     auto_selected_indexes = [c.chapter_index for c in auto_selected]
 
+    now = time.time()
     job = Job(
         job_id=job_id,
         folder=folder,
@@ -193,8 +310,11 @@ async def upload_epub(request: Request, file: UploadFile):
         book=book,
         document_chapters=document_chapters,
         auto_selected_indexes=auto_selected_indexes,
+        created_at=now,
+        updated_at=now,
     )
     JOBS[job_id] = job
+    _save_job_state(job)
     return job.snapshot()
 
 
@@ -203,6 +323,28 @@ def _get_job(job_id: str) -> Job:
     if not job:
         raise HTTPException(404, "Job not found.")
     return job
+
+
+@app.get("/api/jobs")
+async def list_jobs():
+    """All known jobs (active + rehydrated from disk), newest first."""
+    rows = sorted(JOBS.values(), key=lambda j: j.updated_at or 0, reverse=True)
+    return {
+        "jobs": [
+            {
+                "job_id": j.job_id,
+                "title": j.title,
+                "author": j.creator,
+                "status": j.status,
+                "error": j.error,
+                "broken": j.broken,
+                "created_at": j.created_at,
+                "updated_at": j.updated_at,
+                "can_resume": j.status in ("error", "interrupted") and not j.broken and bool(j.params),
+            }
+            for j in rows
+        ]
+    }
 
 
 @app.get("/api/jobs/{job_id}")
@@ -308,6 +450,8 @@ async def preview_chapter(job_id: str, payload: dict):
 @app.post("/api/jobs/{job_id}/start")
 async def start_synthesis(job_id: str, payload: dict):
     job = _get_job(job_id)
+    if job.broken:
+        raise HTTPException(410, f"Job is broken: {job.broken}")
     if job.status == "running":
         raise HTTPException(409, "Job already running.")
     if not SYNTH_LOCK.acquire(blocking=False):
@@ -333,7 +477,10 @@ async def start_synthesis(job_id: str, payload: dict):
             if edited is not None:
                 c.extracted_text = edited
             selected_chapters.append(c)
-            job.chapter_status[c.chapter_index] = "Planned"
+            # Keep prior 'done' (so the user can see what's already finished
+            # carry over); reset everything else to Planned for this run.
+            if job.chapter_status.get(c.chapter_index) != "done":
+                job.chapter_status[c.chapter_index] = "Planned"
 
     try:
         torch.set_default_device("cuda" if use_cuda and torch.cuda.is_available() else "cpu")
@@ -347,6 +494,14 @@ async def start_synthesis(job_id: str, payload: dict):
     job.events_log.clear()
     job.last_stats = None
     job.events_wakeup = asyncio.Event()
+    job.params = {
+        "voice": voice,
+        "speed": speed,
+        "cuda": use_cuda,
+        "selected_chapter_indexes": sorted(selected_indexes),
+        "edited_texts": edited_texts,
+    }
+    _save_job_state(job)
 
     def post_event(name, **kwargs):
         payload = {"event": name, "ts": time.time(), **kwargs}
@@ -360,18 +515,28 @@ async def start_synthesis(job_id: str, payload: dict):
                 "chars_per_sec": s.chars_per_sec,
             }
             job.last_stats = payload["stats"]
+        persist = False
         if name == "CORE_CHAPTER_STARTED":
             job.chapter_status[kwargs["chapter_index"]] = "in_progress"
+            persist = True
         if name == "CORE_CHAPTER_FINISHED":
             job.chapter_status[kwargs["chapter_index"]] = "done"
+            persist = True
         # Set terminal status BEFORE appending so the SSE iterator's STREAM_END
         # payload (read right after the event) sees the right status.
         if name == "CORE_FINISHED":
             job.status = "finished"
+            persist = True
         elif name == "CORE_ERROR":
             job.status = "error"
             job.error = kwargs.get("message", str(kwargs))
+            persist = True
         job.events_log.append(payload)
+        if persist:
+            try:
+                _save_job_state(job)
+            except Exception as e:
+                print(f"Failed to persist job state: {e}")
         loop.call_soon_threadsafe(job.events_wakeup.set)
 
     def worker():
@@ -403,6 +568,19 @@ async def start_synthesis(job_id: str, payload: dict):
 
     threading.Thread(target=worker, daemon=True).start()
     return {"started": job_id}
+
+
+@app.post("/api/jobs/{job_id}/resume")
+async def resume_synthesis(job_id: str):
+    """Re-run synthesis with the last-used params. core.synthesize() skips
+    chapters whose WAVs already exist, so this picks up roughly where the
+    previous run left off."""
+    job = _get_job(job_id)
+    if job.broken:
+        raise HTTPException(410, f"Job is broken: {job.broken}")
+    if not job.params:
+        raise HTTPException(400, "No saved params for this job; nothing to resume.")
+    return await start_synthesis(job_id, dict(job.params))
 
 
 @app.get("/api/jobs/{job_id}/events")

@@ -20,6 +20,10 @@
     <div class="placeholder">
       <h2>Open an EPUB to begin.</h2>
       <p>Generated audiobooks are saved on the server and can be downloaded from this page when synthesis finishes.</p>
+      <section id="recent-jobs" class="card" hidden>
+        <h3>Recent jobs</h3>
+        <ul id="recent-jobs-list"></ul>
+      </section>
     </div>
   </main>
 
@@ -84,7 +88,10 @@
           <progress id="progress-bar" max="100" value="0"></progress>
           <p id="eta-label" class="muted">Estimated Time Remaining: —</p>
         </div>
-        <div id="error-message" class="error hidden"></div>
+        <div id="error-message" class="error hidden">
+          <span id="error-text"></span>
+          <button class="btn" id="resume-btn" hidden>↻ Resume</button>
+        </div>
       </section>
 
       <section class="card" id="files-card" hidden>

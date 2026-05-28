@@ -41,6 +41,57 @@ async function init() {
   $("preview-btn").addEventListener("click", onPreview);
   $("start-btn").addEventListener("click", onStart);
   $("chapter-text").addEventListener("input", onTextEdit);
+  $("resume-btn").addEventListener("click", onResume);
+
+  await renderRecentJobs();
+}
+
+async function renderRecentJobs() {
+  let data;
+  try {
+    data = await fetch("/api/jobs").then((r) => r.json());
+  } catch {
+    return;
+  }
+  if (!data.jobs || data.jobs.length === 0) return;
+  const section = $("recent-jobs");
+  const list = $("recent-jobs-list");
+  list.innerHTML = "";
+  for (const j of data.jobs) {
+    const li = document.createElement("li");
+    li.className = `job-row status-${j.status}`;
+    const left = document.createElement("a");
+    left.href = "#";
+    left.textContent = j.title || j.job_id.slice(0, 8);
+    left.addEventListener("click", (e) => { e.preventDefault(); loadExistingJob(j.job_id); });
+    const right = document.createElement("span");
+    right.className = "muted";
+    let badge = j.status;
+    if (j.broken) badge = "broken";
+    right.textContent = badge;
+    li.append(left, right);
+    list.appendChild(li);
+  }
+  section.hidden = false;
+}
+
+async function loadExistingJob(jobId) {
+  let snapshot;
+  try {
+    const res = await fetch(`/api/jobs/${jobId}`);
+    if (!res.ok) throw new Error(await res.text());
+    snapshot = await res.json();
+  } catch (e) {
+    alert(`Couldn't load job: ${e.message || e}`);
+    return;
+  }
+  hydrateJob(snapshot);
+  if (snapshot.status === "error" || snapshot.status === "interrupted") {
+    showError(snapshot.error || `Job ended in ${snapshot.status} state.`);
+    $("resume-btn").hidden = false;
+  } else if (snapshot.status === "finished") {
+    refreshFiles();
+  }
 }
 
 async function onEpubChosen(e) {
@@ -99,6 +150,7 @@ function hydrateJob(job) {
   $("files-card").hidden = true;
   $("files-list").innerHTML = "";
   $("error-message").classList.add("hidden");
+  $("resume-btn").hidden = true;
   $("progress-wrap").classList.add("hidden");
 
   renderChapters();
@@ -116,7 +168,11 @@ function renderChapters() {
     const td0 = document.createElement("td");
     const cb = document.createElement("input");
     cb.type = "checkbox";
-    cb.checked = c.auto_selected;
+    // Prefer the saved selection from a resumed job; fall back to the auto
+    // selection from `find_good_chapters` for fresh uploads.
+    const initiallyChecked = (c.selected !== undefined) ? c.selected : c.auto_selected;
+    cb.checked = initiallyChecked;
+    c.auto_selected = initiallyChecked;
     cb.addEventListener("click", (ev) => ev.stopPropagation());
     cb.addEventListener("change", () => { c.auto_selected = cb.checked; });
     td0.appendChild(cb);
@@ -130,7 +186,9 @@ function renderChapters() {
 
     const td3 = document.createElement("td");
     td3.dataset.statusCell = "1";
-    td3.textContent = "";
+    if (c.status === "done") { td3.textContent = "✅ Done"; td3.className = "status-done"; }
+    else if (c.status === "in_progress") { td3.textContent = "⏳ In Progress"; td3.className = "status-in_progress"; }
+    else if (c.status) td3.textContent = c.status;
 
     tr.append(td0, td1, td2, td3);
     tr.addEventListener("click", () => loadChapter(c.index));
@@ -208,6 +266,7 @@ async function onStart() {
 
   $("start-btn").disabled = true;
   $("error-message").classList.add("hidden");
+  $("resume-btn").hidden = true;
   $("progress-wrap").classList.remove("hidden");
   $("progress-bar").value = 0;
   $("progress-label").textContent = "Synthesis Progress: 0%";
@@ -296,8 +355,28 @@ function setChapterStatus(idx, text, cls) {
 
 function showError(msg) {
   const el = $("error-message");
-  el.textContent = msg;
+  $("error-text").textContent = msg;
+  $("resume-btn").hidden = false;
   el.classList.remove("hidden");
+}
+
+async function onResume() {
+  if (!state.job) return;
+  $("resume-btn").hidden = true;
+  $("error-message").classList.add("hidden");
+  $("start-btn").disabled = true;
+  $("progress-wrap").classList.remove("hidden");
+  $("progress-bar").value = 0;
+  $("progress-label").textContent = "Resuming…";
+  try {
+    const res = await fetch(`/api/jobs/${state.job.job_id}/resume`, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+  } catch (e) {
+    $("start-btn").disabled = false;
+    showError(`Resume failed: ${e.message || e}`);
+    return;
+  }
+  openEventStream();
 }
 
 async function refreshFiles() {

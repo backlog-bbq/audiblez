@@ -55,6 +55,23 @@ header .brand {
 .muted { color: var(--muted); font-size: 12px; }
 .hidden { display: none !important; }
 .error { color: var(--error); margin-top: 8px; }
+.error #error-text { display: block; margin-bottom: 6px; }
+
+#recent-jobs { max-width: 540px; margin: 20px auto 0; text-align: left; }
+#recent-jobs-list { list-style: none; padding: 0; margin: 0; }
+#recent-jobs-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+#recent-jobs-list a { color: var(--accent); text-decoration: none; }
+#recent-jobs-list a:hover { text-decoration: underline; }
+#recent-jobs-list .status-finished span { color: var(--ok); }
+#recent-jobs-list .status-error span,
+#recent-jobs-list .status-interrupted span { color: var(--error); }
 
 main.grid {
   display: grid;
