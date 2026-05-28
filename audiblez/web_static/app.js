@@ -183,7 +183,7 @@ function hydrateJob(job) {
   $("progress-wrap").hidden = true;
   $("logBox").hidden = true;
   $("preview-audio-wrap").hidden = true;
-  $("voiceHint").textContent = "Pick a voice; tap ▶ to hear a sample.";
+  $("start-btn").disabled = false;
 
   renderChapters();
   $("chaptersWrap").hidden = false;
