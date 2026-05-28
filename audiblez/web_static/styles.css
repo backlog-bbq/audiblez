@@ -208,3 +208,74 @@ dialog {
   max-width: 420px;
 }
 dialog::backdrop { background: rgba(0,0,0,0.3); }
+
+/* ---------- Mobile / narrow viewports ---------- */
+/* Below ~900px the three-panel desktop grid doesn't fit. Stack the panels
+   vertically and let the page scroll naturally. */
+@media (max-width: 900px) {
+  header {
+    flex-wrap: wrap;
+    padding: 8px 10px;
+    row-gap: 6px;
+  }
+  header .brand { margin-right: 6px; }
+  /* Push the diagnostic text to its own line on small screens. */
+  #system-info, #upload-status {
+    flex-basis: 100%;
+    font-size: 11px;
+  }
+
+  main.grid {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: calc(100vh - 53px);
+    gap: 8px;
+    padding: 8px;
+  }
+
+  /* Each panel takes its natural height now; constrain the long lists so
+     the user doesn't have to scroll past 100 chapters to reach the editor. */
+  #chapters-panel { max-height: 45vh; }
+  #editor-panel { order: 2; }
+  #chapters-panel { order: 1; }
+  #sidebar { order: 3; }
+
+  /* Editor textarea has no flex parent height to fill — give it real px. */
+  #chapter-text { min-height: 240px; height: 240px; }
+
+  /* Bigger tap targets. */
+  .btn { padding: 10px 14px; font-size: 15px; }
+  #chapters-table th, #chapters-table td { padding: 10px 6px; font-size: 14px; }
+
+  /* The Length column is the least useful on a phone — hide it. */
+  #chapters-table th:nth-child(3), #chapters-table td:nth-child(3) {
+    display: none;
+  }
+
+  /* Stack form labels above their inputs so dropdowns can use full width. */
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .form-row label:first-child { font-size: 13px; }
+  .form-row input[type=number], .form-row select { padding: 8px 10px; font-size: 15px; }
+
+  /* The cover + meta lays out side-by-side, but on a phone the cover steals
+     too much width. Stack them. */
+  .book-info { flex-direction: column; align-items: flex-start; }
+  #cover-img { max-height: 200px; max-width: 100%; }
+
+  dialog {
+    max-width: 92vw;
+    padding: 16px;
+  }
+}
+
+/* Phones in portrait: tighten margins one more notch. */
+@media (max-width: 480px) {
+  body { font-size: 13px; }
+  main.grid { padding: 6px; gap: 6px; }
+  .panel, .card { padding: 10px; }
+  header .brand { font-size: 15px; }
+  #chapters-panel { max-height: 40vh; }
+}
