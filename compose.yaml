@@ -12,11 +12,11 @@
 
 x-common: &common
   ports:
-    - "8000:8000"
+    - "8009:8009"
   environment:
     AUDIBLEZ_OUTPUTS_DIR: /app/outputs
     AUDIBLEZ_HOST: 0.0.0.0
-    AUDIBLEZ_PORT: "8000"
+    AUDIBLEZ_PORT: "8009"
     HF_HOME: /home/audiblez/.cache/huggingface
   volumes:
     # Named volumes (managed by docker/podman) — survive container rebuilds

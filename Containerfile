@@ -78,5 +78,5 @@ RUN useradd -u 1000 -m -s /bin/bash audiblez \
     && chown -R audiblez:audiblez /app /home/audiblez
 
 USER audiblez
-EXPOSE 8000
+EXPOSE 8009
 CMD ["audiblez-web"]

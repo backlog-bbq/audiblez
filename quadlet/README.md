@@ -112,15 +112,15 @@ Generated audiobooks live in the `audiblez-outputs` named volume (declared by
 rebuilds, and avoids host-side ownership / SELinux headaches.
 
 The primary way to retrieve files is the web UI's download API — open
-`http://localhost:8000`, finish a job, and click the download link next to the
+`http://localhost:8009`, finish a job, and click the download link next to the
 `.m4b`. From the shell:
 
 ```sh
 # List files in a job:
-curl -s http://localhost:8000/api/jobs/<job-id>/files
+curl -s http://localhost:8009/api/jobs/<job-id>/files
 
 # Download an M4B:
-curl -OJ http://localhost:8000/api/jobs/<job-id>/download/<filename>.m4b
+curl -OJ http://localhost:8009/api/jobs/<job-id>/download/<filename>.m4b
 ```
 
 If you want direct filesystem access to the volume:

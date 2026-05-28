@@ -34,11 +34,11 @@ Image=localhost/audiblez:cpu
 Pull=never
 ContainerName=audiblez-cpu
 
-PublishPort=8000:8000
+PublishPort=8009:8009
 
 Environment=AUDIBLEZ_OUTPUTS_DIR=/app/outputs
 Environment=AUDIBLEZ_HOST=0.0.0.0
-Environment=AUDIBLEZ_PORT=8000
+Environment=AUDIBLEZ_PORT=8009
 Environment=HF_HOME=/home/audiblez/.cache/huggingface
 
 # Named volumes (declared by the .volume units). Retrieve generated audiobooks

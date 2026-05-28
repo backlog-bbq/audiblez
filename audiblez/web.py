@@ -447,7 +447,7 @@ async def stream_events(job_id: str, request: Request):
 def main():
     import uvicorn
     host = os.environ.get("AUDIBLEZ_HOST", "0.0.0.0")
-    port = int(os.environ.get("AUDIBLEZ_PORT", "8000"))
+    port = int(os.environ.get("AUDIBLEZ_PORT", "8009"))
     uvicorn.run("audiblez.web:app", host=host, port=port, log_level="info")
 
 

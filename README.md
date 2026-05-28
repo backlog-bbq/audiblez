@@ -55,7 +55,7 @@ The project is managed by [uv](https://docs.astral.sh/uv/). To work on it from a
 uv sync --extra web              # installs all deps including the web UI
 uv run audiblez --help           # CLI
 uv run audiblez-ui               # desktop GUI (needs wxpython on your system)
-uv run audiblez-web              # web UI on http://localhost:8000
+uv run audiblez-web              # web UI on http://localhost:8009
 uv run pytest                    # tests
 ```
 
@@ -68,7 +68,7 @@ downloadable from the page.
 
 ```bash
 uv sync --extra web
-uv run audiblez-web              # serves on 0.0.0.0:8000
+uv run audiblez-web              # serves on 0.0.0.0:8009
 ```
 
 Useful env vars: `AUDIBLEZ_HOST`, `AUDIBLEZ_PORT`, `AUDIBLEZ_OUTPUTS_DIR`,
@@ -113,7 +113,7 @@ the store the service will look in.
 
 See `quadlet/README.md` for rootful install, CUDA setup, and ownership notes.
 
-> The web UI binds to `0.0.0.0:8000`. It has no authentication — put it behind
+> The web UI binds to `0.0.0.0:8009`. It has no authentication — put it behind
 > a reverse proxy + auth before exposing it to a network you don't trust.
 
 ## How to run the GUI
