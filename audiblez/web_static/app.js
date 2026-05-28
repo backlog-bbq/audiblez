@@ -192,8 +192,14 @@ function hydrateJob(job) {
 function renderChapters() {
   const list = $("chapters-list");
   list.innerHTML = "";
+  // If this job has been started before, restore the saved selection.
+  // Otherwise fall back to the heuristic auto-selection so first-time
+  // uploads still show the obvious chapters checked.
+  const hasSavedSelection =
+    state.job && state.job.params &&
+    Array.isArray(state.job.params.selected_chapter_indexes);
   for (const c of state.chapters) {
-    const initiallyChecked = (c.selected !== undefined) ? c.selected : c.auto_selected;
+    const initiallyChecked = hasSavedSelection ? !!c.selected : !!c.auto_selected;
     c.auto_selected = initiallyChecked;
 
     const li = document.createElement("li");
