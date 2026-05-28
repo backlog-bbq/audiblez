@@ -8,9 +8,14 @@
 #   quadlet/install.sh --cuda           # rootless, CUDA
 #   quadlet/install.sh --system         # rootful (sudo), CPU
 #   quadlet/install.sh --system --cuda  # rootful (sudo), CUDA
+#   quadlet/install.sh --build          # build the image first (uses podman)
 #   quadlet/install.sh --start          # also start the service after install
 #   quadlet/install.sh --uninstall      # remove the units (matches other flags)
 #   quadlet/install.sh --help
+#
+# Quadlet only runs containers — it never builds. You must either build the
+# image yourself (`podman build -t audiblez:cpu .`) before starting the
+# service, or pass --build here.
 #
 # Quadlet requires podman >= 4.4 and a systemd-managed host.
 
@@ -19,6 +24,7 @@ set -euo pipefail
 variant="cpu"
 scope="user"
 do_start=0
+do_build=0
 do_uninstall=0
 
 for arg in "$@"; do
@@ -27,10 +33,11 @@ for arg in "$@"; do
         --cpu) variant="cpu" ;;
         --system|--rootful) scope="system" ;;
         --user|--rootless) scope="user" ;;
+        --build) do_build=1 ;;
         --start) do_start=1 ;;
         --uninstall) do_uninstall=1 ;;
         -h|--help)
-            sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -42,6 +49,7 @@ for arg in "$@"; do
 done
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$script_dir/.." && pwd)"
 
 if [[ "$scope" == "user" ]]; then
     target_dir="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
@@ -80,18 +88,44 @@ if (( do_uninstall )); then
     exit 0
 fi
 
-# Warn if the prebuilt image isn't available — install still succeeds, but
-# `systemctl start` will fail until you build it.
-if command -v podman >/dev/null 2>&1; then
-    if ! podman image exists "audiblez:${variant}" 2>/dev/null; then
-        echo "Warning: image 'audiblez:${variant}' not found locally."
-        echo "  Build it first with:"
+build_image() {
+    if ! command -v podman >/dev/null 2>&1; then
+        echo "podman not found in PATH; can't build the image." >&2
+        exit 1
+    fi
+    echo "Building localhost/audiblez:${variant} from $repo_root"
+    build_sudo=""
+    [[ "$scope" == "system" ]] && build_sudo="sudo"
+    if [[ "$variant" == "cuda" ]]; then
+        $build_sudo podman build \
+            -t "localhost/audiblez:cuda" \
+            --build-arg BASE_IMAGE=nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 \
+            --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124 \
+            "$repo_root"
+    else
+        $build_sudo podman build -t "localhost/audiblez:cpu" "$repo_root"
+    fi
+}
+
+# Build the image now, or warn that the user has to do it themselves.
+# Note: rootless podman keeps its image store under the calling user; rootful
+# uses a different store. The quadlet service runs in the same scope as the
+# install, so the image must exist in *that* scope's store.
+if (( do_build )); then
+    build_image
+elif command -v podman >/dev/null 2>&1; then
+    check_sudo=""
+    [[ "$scope" == "system" ]] && check_sudo="sudo"
+    if ! $check_sudo podman image exists "localhost/audiblez:${variant}" 2>/dev/null; then
+        echo "Warning: image 'localhost/audiblez:${variant}' not found in the"
+        echo "${scope} podman store. The service will fail to start until you"
+        echo "build it. Re-run with --build, or build manually:"
         if [[ "$variant" == "cuda" ]]; then
-            echo "    podman build -t audiblez:cuda \\"
+            echo "    ${check_sudo} podman build -t localhost/audiblez:cuda \\"
             echo "      --build-arg BASE_IMAGE=nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 \\"
             echo "      --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124 ."
         else
-            echo "    podman build -t audiblez:cpu ."
+            echo "    ${check_sudo} podman build -t localhost/audiblez:cpu ."
         fi
         echo
     fi

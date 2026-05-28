@@ -101,11 +101,15 @@ For rootless podman users who want systemd lifecycle, journald logs, and
 auto-restart, ship the units in `quadlet/`:
 
 ```bash
-quadlet/install.sh --start         # rootless CPU + immediate start
-quadlet/install.sh --cuda --start  # rootless CUDA + start
-quadlet/install.sh --system        # rootful install
+quadlet/install.sh --build --start         # rootless CPU: build + install + start
+quadlet/install.sh --cuda --build --start  # rootless CUDA: build + install + start
+quadlet/install.sh --system --build        # rootful (sudo) install + build
 journalctl --user -u audiblez-cpu.service -f
 ```
+
+Quadlet only runs containers; it never builds. `--build` runs `podman build`
+in the same scope (rootless / rootful) as the install so the image lands in
+the store the service will look in.
 
 See `quadlet/README.md` for rootful install, CUDA setup, and ownership notes.
 

@@ -26,7 +26,12 @@ After=network-online.target
 Wants=network-online.target
 
 [Container]
-Image=audiblez:cpu
+# Canonical local image name. `podman build -t audiblez:cpu .` stores it
+# under this name; using the qualified form here skips short-name registry
+# resolution (which otherwise fails under systemd: "short-name resolution
+# enforced but cannot prompt without a TTY").
+Image=localhost/audiblez:cpu
+PullPolicy=never
 ContainerName=audiblez-cpu
 
 PublishPort=8000:8000

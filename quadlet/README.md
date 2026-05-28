@@ -21,31 +21,47 @@ service at daemon-reload time. Compared to `compose.yaml`, Quadlet gives you:
 
 ## Build the image first
 
+`install.sh --build` handles this for you, but if you'd rather build manually:
+
 ```sh
 # CPU
-podman build -t audiblez:cpu .
+podman build -t localhost/audiblez:cpu .
 
 # CUDA
-podman build -t audiblez:cuda \
+podman build -t localhost/audiblez:cuda \
   --build-arg BASE_IMAGE=nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 \
   --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124 .
 ```
 
+Build in the same scope you'll run in (rootless build for rootless service,
+`sudo podman build …` for `--system`) — rootless and rootful podman use
+separate image stores.
+
 ## Install with the convenience script (recommended)
 
 ```sh
-quadlet/install.sh                  # rootless, CPU
-quadlet/install.sh --cuda           # rootless, CUDA
-quadlet/install.sh --system         # rootful (sudo), CPU
-quadlet/install.sh --system --cuda  # rootful (sudo), CUDA
-quadlet/install.sh --start          # also start the service after install
-quadlet/install.sh --uninstall      # remove the units (matches other flags)
+quadlet/install.sh --build --start          # build, install, and start (CPU)
+quadlet/install.sh --cuda --build --start   # same, CUDA
+quadlet/install.sh --system --build         # rootful (sudo) build + install
+quadlet/install.sh --uninstall              # remove the units
 ```
+
+Flags: `--cuda` (default `--cpu`), `--system` (rootful, default `--user`),
+`--build` (run `podman build` first — Quadlet itself never builds), `--start`
+(start the service after install), `--uninstall`.
 
 The script copies the right `.container`, `.volume`, and `.network` files
 into `~/.config/containers/systemd/` (rootless) or `/etc/containers/systemd/`
 (`--system`), runs `systemctl daemon-reload` in the appropriate scope, and
-prints the commands to start and tail the service.
+prints the commands to start and tail the service. With `--build` it also
+builds `localhost/audiblez:cpu` or `localhost/audiblez:cuda` from the repo
+root before installing.
+
+> **Why `localhost/audiblez:...`?** Quadlet runs containers under systemd
+> with no TTY, so podman's interactive short-name registry prompt fails
+> ("short-name resolution enforced but cannot prompt without a TTY"). The
+> units use the canonical `localhost/...` form to skip that lookup, and set
+> `PullPolicy=never` so a missing image fails with a clear error.
 
 Keep a rootless service running after logout:
 
