@@ -2,17 +2,19 @@
 #
 # Install (user-level / rootless):
 #   mkdir -p ~/.config/containers/systemd
-#   cp quadlet/audiblez-cpu.container ~/.config/containers/systemd/
-#   cp quadlet/audiblez.volume        ~/.config/containers/systemd/
-#   cp quadlet/audiblez.network       ~/.config/containers/systemd/
+#   cp quadlet/audiblez-cpu.container     ~/.config/containers/systemd/
+#   cp quadlet/audiblez.volume            ~/.config/containers/systemd/
+#   cp quadlet/audiblez-outputs.volume    ~/.config/containers/systemd/
+#   cp quadlet/audiblez.network           ~/.config/containers/systemd/
 #   systemctl --user daemon-reload
 #   systemctl --user start audiblez-cpu.service
 #   loginctl enable-linger $USER   # to keep it running across logouts
 #
 # Install (system-level / rootful):
-#   sudo cp quadlet/audiblez-cpu.container /etc/containers/systemd/
-#   sudo cp quadlet/audiblez.volume        /etc/containers/systemd/
-#   sudo cp quadlet/audiblez.network       /etc/containers/systemd/
+#   sudo cp quadlet/audiblez-cpu.container     /etc/containers/systemd/
+#   sudo cp quadlet/audiblez.volume            /etc/containers/systemd/
+#   sudo cp quadlet/audiblez-outputs.volume    /etc/containers/systemd/
+#   sudo cp quadlet/audiblez.network           /etc/containers/systemd/
 #   sudo systemctl daemon-reload
 #   sudo systemctl start audiblez-cpu.service
 #
@@ -34,9 +36,10 @@ Environment=AUDIBLEZ_HOST=0.0.0.0
 Environment=AUDIBLEZ_PORT=8000
 Environment=HF_HOME=/home/audiblez/.cache/huggingface
 
-# Bind-mount outputs/ next to the unit (resolved by the user running it).
-# Adjust the host path if you want outputs to live elsewhere.
-Volume=%h/audiblez/outputs:/app/outputs:Z
+# Named volumes (declared by the .volume units). Retrieve generated audiobooks
+# via the web UI's download API, or run `podman volume inspect audiblez-outputs`
+# to find the on-disk path.
+Volume=audiblez-outputs.volume:/app/outputs:Z
 Volume=audiblez.volume:/home/audiblez/.cache/huggingface:Z
 
 Network=audiblez.network

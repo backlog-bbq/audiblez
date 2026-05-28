@@ -15,6 +15,7 @@ service at daemon-reload time. Compared to `compose.yaml`, Quadlet gives you:
 |------|---------|
 | `audiblez-cpu.container` | CPU-only image (`audiblez:cpu`). |
 | `audiblez-cuda.container` | NVIDIA CUDA image (`audiblez:cuda`). Requires NVIDIA Container Toolkit + CDI. |
+| `audiblez-outputs.volume` | Named volume for generated audiobooks (per-job folders with `.m4b` + intermediate `.wav` files). |
 | `audiblez.volume` | Named volume for the HuggingFace model cache. |
 | `audiblez.network` | Dedicated bridge network. |
 
@@ -34,9 +35,10 @@ podman build -t audiblez:cuda \
 
 ```sh
 mkdir -p ~/.config/containers/systemd
-cp quadlet/audiblez-cpu.container ~/.config/containers/systemd/   # or cuda
-cp quadlet/audiblez.volume        ~/.config/containers/systemd/
-cp quadlet/audiblez.network       ~/.config/containers/systemd/
+cp quadlet/audiblez-cpu.container     ~/.config/containers/systemd/   # or cuda
+cp quadlet/audiblez.volume            ~/.config/containers/systemd/
+cp quadlet/audiblez-outputs.volume    ~/.config/containers/systemd/
+cp quadlet/audiblez.network           ~/.config/containers/systemd/
 
 systemctl --user daemon-reload
 systemctl --user start audiblez-cpu.service
@@ -53,9 +55,10 @@ loginctl enable-linger $USER
 ## Install (rootful)
 
 ```sh
-sudo cp quadlet/audiblez-cpu.container /etc/containers/systemd/
-sudo cp quadlet/audiblez.volume        /etc/containers/systemd/
-sudo cp quadlet/audiblez.network       /etc/containers/systemd/
+sudo cp quadlet/audiblez-cpu.container     /etc/containers/systemd/
+sudo cp quadlet/audiblez.volume            /etc/containers/systemd/
+sudo cp quadlet/audiblez-outputs.volume    /etc/containers/systemd/
+sudo cp quadlet/audiblez.network           /etc/containers/systemd/
 sudo systemctl daemon-reload
 sudo systemctl start audiblez-cpu.service
 ```
@@ -75,13 +78,35 @@ to the container without `--privileged`.
 
 ## Outputs
 
-The CPU and CUDA units bind-mount `~/audiblez/outputs/` on the host into
-`/app/outputs` inside the container — generated `.m4b` files land there with
-ownership matching your host user (UID 1000 inside the container, mapped via
-podman's user namespace).
+Generated audiobooks live in the `audiblez-outputs` named volume (declared by
+`audiblez-outputs.volume`). The volume is managed by podman, survives container
+rebuilds, and avoids host-side ownership / SELinux headaches.
 
-If you pre-created `~/audiblez/outputs/` with the wrong owner, fix it with:
+The primary way to retrieve files is the web UI's download API — open
+`http://localhost:8000`, finish a job, and click the download link next to the
+`.m4b`. From the shell:
 
 ```sh
-podman unshare chown -R 1000:1000 ~/audiblez/outputs
+# List files in a job:
+curl -s http://localhost:8000/api/jobs/<job-id>/files
+
+# Download an M4B:
+curl -OJ http://localhost:8000/api/jobs/<job-id>/download/<filename>.m4b
+```
+
+If you want direct filesystem access to the volume:
+
+```sh
+# Print the on-disk path (under ~/.local/share/containers/ for rootless):
+podman volume inspect audiblez-outputs --format '{{.Mountpoint}}'
+
+# Copy a file out:
+podman cp audiblez-cpu:/app/outputs/<job-id>/<filename>.m4b ./
+```
+
+To clear out old jobs, either DELETE them via the API
+(`DELETE /api/jobs/<job-id>`) or wipe the whole volume:
+
+```sh
+podman volume rm audiblez-outputs
 ```

@@ -5,9 +5,10 @@
 #
 # Install (user-level / rootless):
 #   mkdir -p ~/.config/containers/systemd
-#   cp quadlet/audiblez-cuda.container ~/.config/containers/systemd/
-#   cp quadlet/audiblez.volume         ~/.config/containers/systemd/
-#   cp quadlet/audiblez.network        ~/.config/containers/systemd/
+#   cp quadlet/audiblez-cuda.container    ~/.config/containers/systemd/
+#   cp quadlet/audiblez.volume            ~/.config/containers/systemd/
+#   cp quadlet/audiblez-outputs.volume    ~/.config/containers/systemd/
+#   cp quadlet/audiblez.network           ~/.config/containers/systemd/
 #   systemctl --user daemon-reload
 #   systemctl --user start audiblez-cuda.service
 #
@@ -29,7 +30,7 @@ Environment=AUDIBLEZ_HOST=0.0.0.0
 Environment=AUDIBLEZ_PORT=8000
 Environment=HF_HOME=/home/audiblez/.cache/huggingface
 
-Volume=%h/audiblez/outputs:/app/outputs:Z
+Volume=audiblez-outputs.volume:/app/outputs:Z
 Volume=audiblez.volume:/home/audiblez/.cache/huggingface:Z
 
 Network=audiblez.network

@@ -91,7 +91,9 @@ docker compose --profile cpu up --build           # or `podman compose ...`
 docker compose --profile cuda up --build
 ```
 
-Output `.m4b` files appear under `./outputs/<job-id>/` on the host.
+Output `.m4b` files live in the `audiblez-outputs` named volume. Download them
+from the web UI (recommended) or with `docker volume inspect audiblez-outputs`
+/ `podman volume inspect audiblez-outputs` to find the on-disk path.
 
 ### Quadlet (systemd-native podman units)
 

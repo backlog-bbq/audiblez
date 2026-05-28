@@ -1,0 +1,10 @@
+# Named volume for generated audiobook output (per-job folders with the
+# final .m4b and intermediate .wav files). Use the web UI's download API
+# to retrieve files, or run:
+#
+#   podman volume inspect audiblez-outputs
+#
+# to find the on-disk path.
+
+[Volume]
+VolumeName=audiblez-outputs

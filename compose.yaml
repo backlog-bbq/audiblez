@@ -19,10 +19,13 @@ x-common: &common
     AUDIBLEZ_PORT: "8000"
     HF_HOME: /home/audiblez/.cache/huggingface
   volumes:
-    # `:z` lets SELinux-enforcing hosts (Fedora/RHEL) share the label.
-    # Harmless on Docker/Ubuntu hosts.
-    - ./outputs:/app/outputs:z
-    - hf-cache:/home/audiblez/.cache/huggingface:z
+    # Named volumes (managed by docker/podman) — survive container rebuilds
+    # and avoid host-side ownership/SELinux issues. Use the API endpoint
+    # /api/jobs/<id>/download/<filename> to retrieve generated audiobooks,
+    # or `docker volume inspect audiblez-outputs` / `podman volume inspect
+    # audiblez-outputs` to find the on-disk path.
+    - audiblez-outputs:/app/outputs
+    - audiblez-hf-cache:/home/audiblez/.cache/huggingface
   restart: unless-stopped
   # Keep file ownership sane on the host under rootless podman:
   user: "1000:1000"
@@ -64,4 +67,5 @@ services:
     #           capabilities: [gpu]
 
 volumes:
-  hf-cache:
+  audiblez-outputs:
+  audiblez-hf-cache:
